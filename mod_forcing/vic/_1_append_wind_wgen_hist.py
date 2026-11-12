@@ -75,6 +75,21 @@ def add_wind(wind_file_name,
                             usecols=[3], sep=r'\s+', engine='python', header=None)
     data_wind.columns = ['wind']
     data_wind.insert(0, 'date', pd.date_range(wind_date_start, wind_date_end, freq='D'))
+    # Replace zero wind on leap days (1948-2020) with the neighboring-day mean.
+    wind_by_date = data_wind.set_index('date')['wind']
+    leap_day_mask = (
+        data_wind['date'].dt.month.eq(2)
+        & data_wind['date'].dt.day.eq(29)
+        & data_wind['date'].dt.year.between(1948, 2020)
+        & data_wind['wind'].eq(0)
+    )
+    for date in data_wind.loc[leap_day_mask, 'date']:
+        previous_day = date - pd.Timedelta(days=1)
+        next_day = date + pd.Timedelta(days=1)
+        if previous_day in wind_by_date.index and next_day in wind_by_date.index:
+            data_wind.loc[data_wind['date'].eq(date), 'wind'] = (
+                wind_by_date.loc[previous_day] + wind_by_date.loc[next_day]
+            ) / 2
 
     # --- climate: year, month, day, pr, tmax, tmin ---
     climate_path = os.path.join(climate_dir, climate_file_name)
