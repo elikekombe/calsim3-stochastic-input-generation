@@ -54,16 +54,17 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_module_generated_dir
+from utils.paths import get_module_generated_dir, get_periods
 
 # ------------------------------------------------------------------------------
 # Configuration
 # ------------------------------------------------------------------------------
 RUN_DIR = Path(__file__).resolve().parent
 
-# CalSim study period for Product A (water years)
-PRODUCT_A_START_WY = 1972
-PRODUCT_A_END_WY = 2018
+# I use configured Product A water years for this allocation period.
+_PRODUCT_A_VALIDATION = get_periods("product_a")["validation"]
+PRODUCT_A_START_WY = _PRODUCT_A_VALIDATION["start_water_year"]
+PRODUCT_A_END_WY = _PRODUCT_A_VALIDATION["end_water_year"]
 
 # Product B: number of chunks
 PRODUCT_B_NCHUNKS = 10

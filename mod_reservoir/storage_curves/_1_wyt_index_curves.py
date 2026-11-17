@@ -47,7 +47,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 from utils import dss_io
 from utils.validation_plots import Series, plot_ts_cdf
 
@@ -418,8 +418,10 @@ def run_product_a_plots(
         )
     ) + pd.offsets.MonthEnd(0)
 
-    plot_start = pd.Timestamp("1971-10-01")
-    plot_end = pd.Timestamp("2018-09-30")
+    # I plot over the configured Product A simulation window.
+    _product_a_simulation = get_periods("product_a")["simulation"]
+    plot_start = pd.Timestamp(_product_a_simulation["start_date"])
+    plot_end = pd.Timestamp(_product_a_simulation["end_date"])
     for (partb, partc), sub in tmp.groupby(["Part B", "Part C"]):
         key = (str(partb).strip().upper(), str(partc).strip().upper())
         if key not in dss_data:
@@ -519,8 +521,10 @@ def run_historical_validation(
 
     # Generate per-series plots (validation window: WY 1972-2018)
     HIST_PLOT_DIR.mkdir(parents=True, exist_ok=True)
-    plot_start = pd.Timestamp("1971-10-01")
-    plot_end = pd.Timestamp("2018-09-30")
+    # I plot over the configured Product A simulation window.
+    _product_a_simulation = get_periods("product_a")["simulation"]
+    plot_start = pd.Timestamp(_product_a_simulation["start_date"])
+    plot_end = pd.Timestamp(_product_a_simulation["end_date"])
     for partb in sorted(out["partb"].unique()):
         sub = out[out["partb"] == partb].copy()
         sub = sub.sort_values("date")

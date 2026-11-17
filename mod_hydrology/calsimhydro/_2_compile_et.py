@@ -45,7 +45,7 @@ from pydsstools.core import TimeSeriesContainer
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_archive_dir, get_module_generated_dir
+from utils.paths import get_archive_dir, get_module_generated_dir, get_periods
 
 # Local quantile mapping utility
 from utils.quantile_mapping import qmap_single
@@ -207,8 +207,10 @@ class CompileWBAET:
 		df["month"] = df.index.month
 		df["wy"] = df.index.map(year_to_wy)
 
-		train_period = (1921, 1971)
-		test_period = (1972, 2018)
+		# I use the ET-specific calibration and simulation years from config.
+		periods = get_periods("product_a")["et_quantile_mapping"]
+		train_period = (periods["training_start_water_year"], periods["training_end_water_year"])
+		test_period = (periods["simulation_start_water_year"], periods["simulation_end_water_year"])
 
 		ETsim = (
 			df[(df["wy"] >= test_period[0]) & (df["wy"] <= test_period[1])][
@@ -604,14 +606,14 @@ def main():
 	parser.add_argument(
 		"--start_date",
 		type=str,
-		default="1915-01-01",
-		help="Start date for VIC daily coverage (YYYY-MM-DD)",
+		default=None,
+		help="Start date for VIC daily coverage (YYYY-MM-DD); Product A defaults to config.",
 	)
 	parser.add_argument(
 		"--end_date",
 		type=str,
-		default="2018-12-31",
-		help="End date for VIC daily coverage (YYYY-MM-DD)",
+		default=None,
+		help="End date for VIC daily coverage (YYYY-MM-DD); Product A defaults to config.",
 	)
 	parser.add_argument(
 		"--vic_col_index",
@@ -676,6 +678,8 @@ def main():
 		args.cshydro_panevap_dss = str(_script_dir / "reference" / "CS3_PanEvapGerber.dss")
 	product_b = args.product == 'B'
 	if product_b:
+		start_date = args.start_date or "1915-01-01"
+		end_date = args.end_date or "2018-12-31"
 		vic_path = args.vic_path or str(_vic_gen / 'output' / 'fluxes' / 'Product_B' / '1')
 		hist_vic_path = args.hist_vic_path or str(_vic_gen / 'output' / 'fluxes' / 'Product_A' / '1')
 		output_path = args.output_path or str(_cshydro_gen / 'output' / '_2_compile_et' / 'Product_B')
@@ -683,6 +687,10 @@ def main():
 		vic_path = args.vic_path or str(_vic_gen / 'output' / 'fluxes' / 'Product_A' / '1')
 		hist_vic_path = None
 		output_path = args.output_path or str(_cshydro_gen / 'output' / '_2_compile_et' / 'Product_A')
+		# I use configured Product A WGEN coverage, unless CLI dates override it.
+		period = get_periods("product_a")["wgen_input"]
+		start_date = args.start_date or period["start_date"]
+		end_date = args.end_date or period["end_date"]
 
 	# Build the list of (et_type, cshydro_dss) pairs to run
 	if args.et_type == 'all':
@@ -712,8 +720,8 @@ def main():
 			cshydro_dss=cshydro_dss,
 			et_type=et_type,
 			output_path=output_path,
-			start_date=args.start_date,
-			end_date=args.end_date,
+			start_date=start_date,
+			end_date=end_date,
 			vic_col_index=args.vic_col_index,
 			write_dss=args.write_dss,
 			product_b=product_b,

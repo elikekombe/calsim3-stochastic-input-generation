@@ -60,7 +60,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 from utils.wyt_monthlyavg_framework import (
     compute_wyt_pattern,
     compute_product_targets,
@@ -96,14 +96,16 @@ WYT_HIST_DIR = str(_REPO_DIR / "mod_hydrology" / "water_year_types" / "reference
 WYT_PRODUCT_A_DIR = str(_wyt_gen / "output" / "_1_calc_WYTs" / "Product_A")
 PRODUCT_A_RIM_CSV = (
     _rim_gen / "output" / "_2_qmap_historical_validation"
-    / "_product_a_validation" / "_riminflow_productA_1972_2018.csv"
+    / "_product_a_validation" / f"_riminflow_productA_{PRODUCT_A_START_WY}_{PRODUCT_A_END_WY}.csv"
 )
-TRAIN_START_A = "1921-10-01"
-TRAIN_END_A = "1971-09-30"
-SIM_START_A = "1971-10-01"
-SIM_END_A = "2018-09-30"
-PRODUCT_A_START_WY = 1972
-PRODUCT_A_END_WY = 2018
+# I load Product A split-sample dates from config; Product B keeps its own settings.
+_PRODUCT_A_PERIODS = get_periods("product_a")
+TRAIN_START_A = _PRODUCT_A_PERIODS["training"]["start_date"]
+TRAIN_END_A = _PRODUCT_A_PERIODS["training"]["end_date"]
+SIM_START_A = _PRODUCT_A_PERIODS["simulation"]["start_date"]
+SIM_END_A = _PRODUCT_A_PERIODS["simulation"]["end_date"]
+PRODUCT_A_START_WY = _PRODUCT_A_PERIODS["validation"]["start_water_year"]
+PRODUCT_A_END_WY = _PRODUCT_A_PERIODS["validation"]["end_water_year"]
 
 # -- Config (Product B specific) ---------------------------------------
 WYT_PRODUCT_B_DIR = str(_wyt_gen / "output" / "_1_calc_WYTs" / "Product_B")

@@ -36,11 +36,13 @@ REPO_ROOT = _UTILS_DIR.parent
 
 
 def _long_path(p: Path) -> Path:
-    """On Windows, prepend ``\\\\?\\`` to bypass the 260-char MAX_PATH limit."""
+    """Add the correct Windows extended-path prefix for local and UNC paths."""
     s = str(p)
-    if sys.platform == "win32" and not s.startswith("\\\\?\\"):
-        return Path("\\\\?\\" + s)
-    return p
+    if sys.platform != "win32" or s.startswith("\\\\?\\"):
+        return p
+    if s.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + s[2:])
+    return Path("\\\\?\\" + s)
 
 # ---------------------------------------------------------------------------
 # Load user config → fall back to default
@@ -73,6 +75,18 @@ DATA_DIR: Path = _long_path(_raw if _raw.is_absolute() else (REPO_ROOT / _raw).r
 def get_data_dir() -> Path:
     """Return the resolved root data directory."""
     return DATA_DIR
+
+
+def get_periods(product: str) -> dict:
+    """Return configured date periods for a product.
+
+    I keep these dates in the config so users can adjust run periods without
+    editing dates in multiple pipeline scripts.
+    """
+    periods = _CFG.get("periods", {})
+    if product not in periods:
+        raise KeyError(f"No date periods are configured for {product!r}.")
+    return periods[product]
 
 
 def get_base_dir() -> Path:

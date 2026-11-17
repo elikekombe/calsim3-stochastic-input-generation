@@ -42,7 +42,7 @@ import matplotlib.pyplot as plt
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_module_generated_dir, get_inventory_dir
+from utils.paths import get_module_generated_dir, get_inventory_dir, get_periods
 
 _GEN_DIR = get_module_generated_dir("mod_hydrology/small_watersheds")
 
@@ -234,7 +234,7 @@ def run_postprocess():
 
 # -- VALIDATION CSV ---------------------------------------------------
 
-def create_validation_csv(merged_df=None, output_dir=None, start_wy=1972, end_wy=2018):
+def create_validation_csv(merged_df=None, output_dir=None, start_wy=None, end_wy=None):
     """
     Create validation CSV from SmallWatersheds postprocess output.
 
@@ -254,6 +254,10 @@ def create_validation_csv(merged_df=None, output_dir=None, start_wy=1972, end_wy
     end_wy : int
         End water year (default: 2018)
     """
+    # I use configured validation years unless the caller supplies different years.
+    validation = get_periods("product_a")["validation"]
+    start_wy = validation["start_water_year"] if start_wy is None else start_wy
+    end_wy = validation["end_water_year"] if end_wy is None else end_wy
     if output_dir is None:
         output_dir = VALIDATION_DIR
     os.makedirs(output_dir, exist_ok=True)
@@ -324,8 +328,9 @@ def main():
     """Main entry point."""
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
 
-    start_wy = int(args[0]) if len(args) >= 2 else 1972
-    end_wy   = int(args[1]) if len(args) >= 2 else 2018
+    validation = get_periods("product_a")["validation"]
+    start_wy = int(args[0]) if len(args) >= 2 else validation["start_water_year"]
+    end_wy   = int(args[1]) if len(args) >= 2 else validation["end_water_year"]
 
     if len(args) >= 2:
         print(f"\nCustom validation period: WY {start_wy}-{end_wy}\n")

@@ -80,7 +80,7 @@ from collections import OrderedDict
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_generated_dir, get_module_generated_dir, get_inventory_dir
+from utils.paths import get_base_dir, get_generated_dir, get_module_generated_dir, get_inventory_dir, get_periods
 
 # Suppress noisy warnings from empty slices (e.g. all-NaN columns in stats)
 warnings.filterwarnings("ignore", message="Mean of empty slice")
@@ -103,9 +103,10 @@ INVENTORY_XLSX = get_inventory_dir() / "_MASTER_INVENTORY_FOR_STOCHASTIC_INPUT_G
 
 DSS_PATTERN = "/*/*/*/*/1MON/*"
 
-# Overwrite window (inclusive end-of-month timestamps)
-OVERWRITE_START = pd.Timestamp(1971, 10, 31)
-OVERWRITE_END   = pd.Timestamp(2018,  9, 30)
+# I use the configured Product A validation period for the DSS overwrite window.
+_PRODUCT_A_VALIDATION = get_periods("product_a")["validation"]
+OVERWRITE_START = pd.Timestamp(_PRODUCT_A_VALIDATION["start_date"]) + pd.offsets.MonthEnd(0)
+OVERWRITE_END = pd.Timestamp(_PRODUCT_A_VALIDATION["end_date"])
 
 # -- Junction helper for long DSS paths ----------------------------------------
 # The Fortran HEC-DSS library inside pydsstools limits path names to 256 chars.

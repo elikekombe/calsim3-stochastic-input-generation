@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 
 _gen = get_module_generated_dir("mod_reservoir/storage_curves")
 _ref = Path(__file__).resolve().parents[2] / 'mod_forcing' / 'vic' / 'reference' / 'GridInfo'
@@ -439,8 +439,10 @@ def main():
         end_date = '2015-09-30'
         print(f"\nDate range: {start_date} to {end_date}")
     elif args.source == 'Product_A':
-        start_date = '1915-10-01'
-        end_date = '2018-09-30'
+        # I use the configured Product A period for the Oroville precipitation output.
+        period = get_periods('product_a')['oroville_daily_precip']
+        start_date = period['start_date']
+        end_date = period['end_date']
         print(f"\nDate range: {start_date} to {end_date}")
 
     # Process data

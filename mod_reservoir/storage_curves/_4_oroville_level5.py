@@ -75,7 +75,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 from utils.validation_plots import Series, plot_monthly_box, plot_ts_cdf
 
 _gen = get_module_generated_dir("mod_reservoir/storage_curves")
@@ -295,7 +295,8 @@ def main() -> None:
         wy_max = int(monthly["WY"].max())
 
         # Product A format: Part B, Part C, Year, Month, Value (from WY 1972)
-        start_wy = 1972
+        # I use the configured Product A validation start year.
+        start_wy = get_periods("product_a")["validation"]["start_water_year"]
         val_mask = monthly["WY"] >= start_wy
         val_monthly = monthly.loc[val_mask]
         val_df = pd.DataFrame({

@@ -47,7 +47,7 @@ from pydsstools.core import TimeSeriesContainer
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 
 
 class CompileWBAPrecipEE:
@@ -270,8 +270,8 @@ def main():
                     help='Directory containing WGEN met files.')
     ap.add_argument('--output_path', default=None,
                     help='Output directory.')
-    ap.add_argument('--start_date_vic', default='1915-01-01')
-    ap.add_argument('--end_date_vic', default='2018-12-31')
+    ap.add_argument('--start_date_vic', default=None)
+    ap.add_argument('--end_date_vic', default=None)
     ap.add_argument('--wbas', nargs='*', default=None, help='Optional list of WBA IDs to process')
     ap.add_argument('--met_prefix', default='meteo', help='Prefix for met files')
     ap.add_argument('--met_sep', default='\\s+', help='Separator for met files (regex OK)')
@@ -288,21 +288,29 @@ def main():
     coord_file = args.coord_file or str(_script_dir / 'reference' / 'CalSimHydroEE_WBA_Coordinate_List.csv')
     product_b = args.product == 'B'
     if product_b:
+        start_date_vic = args.start_date_vic or '1915-01-01'
+        end_date_vic = args.end_date_vic or '2018-12-31'
+        clip_period = args.clip_period
         met_path = args.met_path or str(_base / 'WGEN' / 'Product_B' / '1')
         output_path = args.output_path or str(_gen / 'output' / '_1_compile_precip_EE' / 'Product_B')
     else:
         met_path = args.met_path or str(_base / 'WGEN' / 'Product_A' / '1')
         output_path = args.output_path or str(_gen / 'output' / '_1_compile_precip_EE' / 'Product_A')
+        # I keep the Product A coverage in config and allow CLI dates to override it.
+        period = get_periods('product_a')['input_compilation']['calsimhydro_ee']
+        start_date_vic = args.start_date_vic or period['start_date']
+        end_date_vic = args.end_date_vic or period['end_date']
+        clip_period = args.clip_period or period['clip_period']
 
     runner = CompileWBAPrecipEE(
         coord_file=coord_file,
         met_path=met_path,
         output_path=output_path,
-        start_date_vic=args.start_date_vic,
-        end_date_vic=args.end_date_vic,
+        start_date_vic=start_date_vic,
+        end_date_vic=end_date_vic,
         met_prefix=args.met_prefix,
         met_sep=args.met_sep,
-        clip_period=args.clip_period,
+        clip_period=clip_period,
         write_dss=not args.no_dss,
         product_b=product_b,
     )

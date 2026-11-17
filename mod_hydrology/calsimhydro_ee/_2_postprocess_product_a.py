@@ -42,7 +42,7 @@ import matplotlib.pyplot as plt
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import csv_io, dss_io
-from utils.paths import get_module_generated_dir, get_inventory_dir
+from utils.paths import get_module_generated_dir, get_inventory_dir, get_periods
 
 
 # RESULTS ROOT
@@ -53,9 +53,10 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 VALIDATION_DIR = str(_GEN_DIR / "output" / "_2_postprocess_product_a" / "_product_a_validation")
 os.makedirs(VALIDATION_DIR, exist_ok=True)
 
-# Validation window (water years)
-START_WY = 1972
-END_WY   = 2018
+# I read the Product A validation years from config so the output follows the selected period.
+_PRODUCT_A_VALIDATION = get_periods("product_a")["validation"]
+START_WY = _PRODUCT_A_VALIDATION["start_water_year"]
+END_WY   = _PRODUCT_A_VALIDATION["end_water_year"]
 
 # Load Excel Master File
 excel_path = str(get_inventory_dir() / "_MASTER_INVENTORY_FOR_STOCHASTIC_INPUT_GENERATION_.xlsx")
@@ -152,6 +153,7 @@ def main():
     merged_df = merged_df.drop(columns=['PartBC', 'SortOrder'])
 
     # Save Final Merged Time Series
+    # I keep this comparison filename stable because Product B postprocessing reads it.
     merged_csv_path = os.path.join(OUTPUT_DIR, "calsimHydroEE_1972-2018_DSS.csv")
     merged_df.to_csv(merged_csv_path, index=False)
     print(f"Final CSV saved to: {merged_csv_path}")

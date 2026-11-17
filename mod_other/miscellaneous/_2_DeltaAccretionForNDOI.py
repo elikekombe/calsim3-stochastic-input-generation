@@ -54,7 +54,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 
 # -- Constants ----------------------------------------------------------------
 TARGET_LAT   = 38.00      # Stockton Fire Station No. 4 latitude (degN)
@@ -179,9 +179,10 @@ def run_product_a():
     taf_a = calc_taf_vectorized(monthly_a.values, monthly_a.index, product_b=False)
     taf_a = pd.Series(taf_a, index=monthly_a.index)
 
-    # --- Filter to WY 1922-2018 (Oct 1921 - Sep 2018) -----------------------
-    mask_a = (taf_a.index >= pd.Timestamp('1921-10-01')) & \
-             (taf_a.index <= pd.Timestamp('2018-09-30'))
+    # I filter Product A to the configured historical analysis window.
+    analysis_period = get_periods('product_a')['analysis']
+    mask_a = (taf_a.index >= pd.Timestamp(analysis_period['start_date'])) & \
+             (taf_a.index <= pd.Timestamp(analysis_period['end_date']))
     taf_a = taf_a.loc[mask_a]
     print(f'  After WY 1922-2018 filter: {len(taf_a)} months (expect {97*12})')
 

@@ -37,7 +37,7 @@ from pathlib import Path
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 
 
 def add_wind(wind_file_name,
@@ -75,6 +75,21 @@ def add_wind(wind_file_name,
                             usecols=[3], sep=r'\s+', engine='python', header=None)
     data_wind.columns = ['wind']
     data_wind.insert(0, 'date', pd.date_range(wind_date_start, wind_date_end, freq='D'))
+    # Replace zero wind on leap days (1948-2020) with the neighboring-day mean.
+    wind_by_date = data_wind.set_index('date')['wind']
+    leap_day_mask = (
+        data_wind['date'].dt.month.eq(2)
+        & data_wind['date'].dt.day.eq(29)
+        & data_wind['date'].dt.year.between(1948, 2020)
+        & data_wind['wind'].eq(0)
+    )
+    for date in data_wind.loc[leap_day_mask, 'date']:
+        previous_day = date - pd.Timedelta(days=1)
+        next_day = date + pd.Timedelta(days=1)
+        if previous_day in wind_by_date.index and next_day in wind_by_date.index:
+            data_wind.loc[data_wind['date'].eq(date), 'wind'] = (
+                wind_by_date.loc[previous_day] + wind_by_date.loc[next_day]
+            ) / 2
 
     # --- climate: year, month, day, pr, tmax, tmin ---
     climate_path = os.path.join(climate_dir, climate_file_name)
@@ -103,6 +118,9 @@ def main():
                         help="Product_A scenario subdirectory (default '1'); "
                              "ignored for Historical_Unsplit.")
     args = parser.parse_args()
+
+    # I use the configured daily wind coverage instead of dates fixed in this script.
+    wind_period = get_periods("product_a")["wind_input"]
 
     # ---Set Directories---
     _base = get_base_dir()
@@ -137,8 +155,12 @@ def main():
     for i, wind_file_name in enumerate(wind_files):
         climate_file_name = (wind_file_name.replace('data', 'meteo')
                              if climate_named_meteo else wind_file_name)
-        processed_data = add_wind(wind_file_name, climate_file_name,
-                                  wind_dir=wind_dir, climate_dir=climate_dir)
+        processed_data = add_wind(
+            wind_file_name, climate_file_name,
+            wind_dir=wind_dir, climate_dir=climate_dir,
+            wind_date_start=wind_period["start_date"],
+            wind_date_end=wind_period["end_date"],
+        )
         if processed_data is None:
             n_skip += 1
             continue

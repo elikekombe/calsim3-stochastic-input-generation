@@ -38,7 +38,7 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 
 
 class CompileSmallWatershedPrecip:
@@ -236,8 +236,8 @@ def parse_args():
                    help=".dat template file path. Defaults to reference/CVprecipWY1921_2021.dat.")
     p.add_argument("--met_prefix", default="meteo", help="Met file prefix (default: meteo).")
     p.add_argument("--met_sep", default=r"\s+", help="Met file separator regex (default: whitespace).")
-    p.add_argument("--start_date", default="1920-10-01", help="Start date (default: 1920-10-01).")
-    p.add_argument("--end_date", default="2021-09-30", help="End date (default: 2021-09-30).")
+    p.add_argument("--start_date", default=None, help="Start date (Product A defaults to config).")
+    p.add_argument("--end_date", default=None, help="End date (Product A defaults to config).")
     p.add_argument("--clip_period", nargs=2, default=None, help="Clip start end (YYYY-MM-DD YYYY-MM-DD) [Product A only].")
     p.add_argument("--output_path", default=None,
                    help="Output directory. Default resolved from config.")
@@ -261,20 +261,28 @@ def main():
     )
     product_b = args.product == 'B'
     if product_b:
+        start_date = args.start_date or '1920-10-01'
+        end_date = args.end_date or '2021-09-30'
+        clip_period = args.clip_period
         met_path = args.met_path or str(_base / 'WGEN' / 'Product_B' / '1')
         output_path = args.output_path or str(_gen / 'output' / '_1_compile_precip_sws' / 'Product_B')
     else:
         met_path = args.met_path or str(_base / 'WGEN' / 'Product_A' / '1')
         output_path = args.output_path or str(_gen / 'output' / '_1_compile_precip_sws' / 'Product_A')
+        # I keep Product A input dates configurable; command-line dates override these defaults.
+        period = get_periods('product_a')['input_compilation']['small_watersheds']
+        start_date = args.start_date or period['start_date']
+        end_date = args.end_date or period['end_date']
+        clip_period = args.clip_period or period['clip_period']
 
     compiler = CompileSmallWatershedPrecip(
         grid_info_file=grid_info_file,
         met_path=met_path,
         met_prefix=args.met_prefix,
         met_sep=args.met_sep,
-        start_date=args.start_date,
-        end_date=args.end_date,
-        clip_period=args.clip_period,
+        start_date=start_date,
+        end_date=end_date,
+        clip_period=clip_period,
         product_b=product_b,
     )
     df = compiler.compile_all()
