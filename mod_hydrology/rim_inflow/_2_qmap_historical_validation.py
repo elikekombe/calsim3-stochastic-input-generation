@@ -85,7 +85,7 @@ from pathlib import Path
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_inventory_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_inventory_dir, get_module_generated_dir, get_periods
 from utils.quantile_mapping import qmap_single
 from utils import dss_io
 
@@ -156,7 +156,7 @@ def resolve_basis_paths(basis):
         "output_dir":     base_results,
         "figures_dir":    os.path.join(base_results, "figures"),
         "validation_dir": validation_dir,
-        "validation_csv": f"_riminflow_{val_token}_1972_2018.csv",
+        "validation_csv": f"_riminflow_{val_token}_{get_periods('product_a')['validation']['start_water_year']}_{get_periods('product_a')['validation']['end_water_year']}.csv",
     }
 
 
@@ -182,7 +182,15 @@ dss_file     = str(get_base_dir() / "CalSim3" / "__calsim_sv_default__.dss")
 ANCHOR_XLSX     = str(_SCRIPT_DIR / "reference" / "RimInflowAnchor.xlsx")
 NAME_MAP_CSV    = str(_SCRIPT_DIR / "reference" / "CalSim3_VIC_name_mapping.csv")
 
-vic_end_year = 2018
+_PRODUCT_A_PERIODS = get_periods("product_a")
+_PRODUCT_A_TRAINING = _PRODUCT_A_PERIODS["training"]
+_PRODUCT_A_VALIDATION = _PRODUCT_A_PERIODS["validation"]
+_PRODUCT_A_CLIMATE_VALIDATION = _PRODUCT_A_PERIODS["climate_validation"]
+vic_end_year = int(pd.Timestamp(_PRODUCT_A_VALIDATION["end_date"]).year)
+_TRAIN_START = _PRODUCT_A_TRAINING["start_date"]
+_TRAIN_END = _PRODUCT_A_TRAINING["end_date"]
+_SIM_START = _PRODUCT_A_VALIDATION["start_date"]
+_SIM_END = _PRODUCT_A_VALIDATION["end_date"]
 
 
 def load_inputs():
@@ -450,14 +458,18 @@ def resolve_location(df: pd.DataFrame, location: str, col: str = "CalSim"):
     return names[mask].iloc[0], mask
 
 
-def complete_water_year_filter(df: pd.DataFrame, wy_start: int = 1972,
-                               wy_end: int = vic_end_year) -> pd.DataFrame:
+def complete_water_year_filter(df: pd.DataFrame, wy_start: int | None = None,
+                               wy_end: int | None = None) -> pd.DataFrame:
     """Return rows within complete water years only.
 
     Adds a `WY` column (WY = Year+1 for Oct-Dec, else Year), keeps
     wy_start <= WY <= wy_end, then drops any WY that is missing months
     (keeps only WYs where all 12 calendar months are present).
     """
+    # I use configured Product A water years unless the caller supplies bounds.
+    validation = get_periods("product_a")["validation"]
+    wy_start = validation["start_water_year"] if wy_start is None else wy_start
+    wy_end = validation["end_water_year"] if wy_end is None else wy_end
     out = df.copy()
     out["Year"]  = out["Year"].astype(int)
     out["Month"] = out["Month"].astype(int)
@@ -686,8 +698,8 @@ def make_monthly_avg_pcterr_location_figure(detail_df: pd.DataFrame, location: s
 # Annual time-series plots span the full CS3/VIC overlap; QMAP exists only in
 # the simulation/validation window. Colours match the rest of the report
 # (CS3 black, VIC blue, QMAP red).
-_ANNUAL_TS_HIST_START = 1922          # first complete water year for CS3/VIC
-_ANNUAL_TS_SIM_START  = 1972          # first complete water year for QMAP
+_ANNUAL_TS_HIST_START = _PRODUCT_A_CLIMATE_VALIDATION["start_water_year"]
+_ANNUAL_TS_SIM_START  = _PRODUCT_A_VALIDATION["start_water_year"]
 # Labels carry a {basis} placeholder filled per call (e.g. "VIC Product A").
 _ANNUAL_TS_SERIES = [
     ("CS3 Historical",   "CS3",  "black"),
@@ -814,7 +826,10 @@ def make_annual_timeseries_location_figure(vic_detail_df: pd.DataFrame,
 # Non-exceedance plot: hist = WY1922-1971, sim = WY1972-2018. Five curves per
 # figure (CS3/VIC in both periods + QMAP in sim). Hist drawn solid, sim dashed;
 # colours match the rest (CS3 black, VIC blue, QMAP red).
-_NONEXCEED_HIST = (1922, 1971)
+_NONEXCEED_HIST = (
+    _PRODUCT_A_CLIMATE_VALIDATION["start_water_year"],
+    pd.Timestamp(_PRODUCT_A_TRAINING["end_date"]).year,
+)
 
 # Map month names/abbreviations (case-insensitive) to 1-12 for --nonexceed-month.
 _MONTH_NAME_TO_NUM = {}
@@ -1176,7 +1191,8 @@ def parse_locations(loc_args, available, master_order=None):
 
 def write_monthly_skill_summary(detail_df: pd.DataFrame, output_dir: str,
                                 qmap_col: str = "qmap_postAdj",
-                                wy_start: int = 1972, wy_end: int = vic_end_year):
+                                wy_start: int | None = None,
+                                wy_end: int | None = None):
     """Per-inflow monthly skill summary (VIC vs CS3 and QMAP vs CS3) over the
     complete validation water years, written as a CSV (one row per inflow).
 
@@ -1185,6 +1201,10 @@ def write_monthly_skill_summary(detail_df: pd.DataFrame, output_dir: str,
     PBIAS = 100*sum(sim-obs)/sum(obs); positive PBIAS = product overestimates
     CS3). CS3 is the observed series; VIC and QMAP are the simulated series.
     """
+    # I use configured validation water years unless this function gets overrides.
+    wy_start = _PRODUCT_A_VALIDATION["start_water_year"] if wy_start is None else wy_start
+    wy_end = _PRODUCT_A_VALIDATION["end_water_year"] if wy_end is None else wy_end
+
     # Reuse the repo's shared metric implementations (signature is obs, sim).
     from utils.validation_plots import r2 as vp_r2, nse as vp_nse, pbias as vp_pbias
 
@@ -1264,8 +1284,8 @@ def main(locations=None, qmap_col="qmap_postAdj", nonexceedance_month=None, basi
         # (test). The validation window ends at the end of WY vic_end_year
         # (Sep 30), matching the repo convention (utils.qmap_product_a_from_pairs
         # SIM_END and the Product A compiler's OVERWRITE_END), not Dec 31.
-        b_train = joined.loc['1921-10-01':'1971-09-30','basis']; t_train = joined.loc['1921-10-01':'1971-09-30','target']
-        b_test  = joined.loc['1971-10-01':f'{vic_end_year}-09-30','basis']; t_test  = joined.loc['1971-10-01':f'{vic_end_year}-09-30','target']
+        b_train = joined.loc[_TRAIN_START:_TRAIN_END, 'basis']; t_train = joined.loc[_TRAIN_START:_TRAIN_END, 'target']
+        b_test  = joined.loc[_SIM_START:_SIM_END, 'basis']; t_test = joined.loc[_SIM_START:_SIM_END, 'target']
         if b_train.empty or t_train.empty or b_test.empty or t_test.empty:
             continue
 

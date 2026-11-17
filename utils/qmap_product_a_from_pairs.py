@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from utils import csv_io, dss_io
+from utils.paths import get_periods
 from utils.validation_plots import (
     Series, format_metric_line, nse, pbias, plot_monthly_box, plot_ts_cdf, r2,
 )
@@ -35,10 +36,12 @@ _REQUIRED_COLS = ["target_part_b", "target_part_c",
 _OPTIONAL_COLS = ["lower_bound", "upper_bound", "allow_negative"]
 
 # -- Defaults -----------------------------------------------------------------
-TRAIN_START = "1921-10-01"
-TRAIN_END = "1971-09-30"
-SIM_START = "1971-10-01"
-SIM_END = "2018-09-30"
+# I read the split-sample dates from config so Product A periods are set in one place.
+_PRODUCT_A_PERIODS = get_periods("product_a")
+TRAIN_START = _PRODUCT_A_PERIODS["training"]["start_date"]
+TRAIN_END = _PRODUCT_A_PERIODS["training"]["end_date"]
+SIM_START = _PRODUCT_A_PERIODS["simulation"]["start_date"]
+SIM_END = _PRODUCT_A_PERIODS["simulation"]["end_date"]
 DSS_READ_START = "1915-01-31"
 DSS_READ_END = "2018-12-31"
 ALLOW_NEGATIVE = False

@@ -42,7 +42,7 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_module_generated_dir
+from utils.paths import get_module_generated_dir, get_periods
 
 
 class compile_rim_inflows:
@@ -221,7 +221,7 @@ def main():
     parser.add_argument('--fluxes_path', type=str, default=None, help='Path to VIC fluxes directory')
     parser.add_argument('--full_vic', action='store_true', help='If set, use full VIC output (default is trimmed).')
     parser.add_argument('--output_path', type=str, default=None, help='Path to output directory')
-    parser.add_argument('--start_date', type=str, default='1915-01-01', help='Start date (YYYY-MM-DD)')
+    parser.add_argument('--start_date', type=str, default=None, help='Start date (YYYY-MM-DD); defaults to the selected product period.')
     parser.add_argument('--end_date', type=str, default=None,
                         help='End date (YYYY-MM-DD); defaults per product: '
                              'Historical 2021-12-31, A 2018-12-31 (ignored for B).')
@@ -247,21 +247,20 @@ def main():
         fluxes_path = args.fluxes_path or str(_vic_gen / 'output' / 'fluxes' / 'Product_A' / '1')
         output_path = args.output_path or str(_vic_gen / 'output' / 'routed' / 'Product_A' / '1')
 
-    # Resolve end date per product (flux extents differ): Historical runs through
-    # 2021-12-31 (supports the CalSim run WY 1922-2021); Historical_Unsplit and
-    # Product A end 2018-12-31.
-    if args.end_date:
-        end_date = args.end_date
-    elif args.product == 'Historical':
-        end_date = '2021-12-31'
+    # I use the product's configured source window unless CLI dates override it.
+    product_a_periods = get_periods('product_a')
+    if args.product == 'Historical':
+        default_period = product_a_periods['wind_input']
     else:
-        end_date = '2018-12-31'
+        default_period = product_a_periods['wgen_input']
+    start_date = args.start_date or default_period['start_date']
+    end_date = args.end_date or default_period['end_date']
 
     rim = compile_rim_inflows(
         grid_info_path=grid_info_path,
         fluxes_path=fluxes_path,
         output_path=output_path,
-        start_date=args.start_date,
+        start_date=start_date,
         end_date=end_date,
         product_b=product_b,
         full_vic=args.full_vic

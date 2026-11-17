@@ -40,7 +40,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_module_generated_dir
+from utils.paths import get_module_generated_dir, get_periods
 
 _rim_gen = get_module_generated_dir("mod_hydrology/rim_inflow")
 _wyt_gen = get_module_generated_dir("mod_hydrology/water_year_types")
@@ -392,7 +392,9 @@ def process_product_b(input_dir, output_dir, thresholds):
                                sj_initial_index=3.23)
         
         # Remap water years to CalSim convention (WY 1922-2021)
-        wyt_df['water_year'] = list(range(1922, 1922 + len(wyt_df)))
+        # I label Product A water years from the configured climate-validation start.
+        first_product_a_wy = get_periods('product_a')['climate_validation']['start_water_year']
+        wyt_df['water_year'] = list(range(first_product_a_wy, first_product_a_wy + len(wyt_df)))
         
         # Save separate outputs for Sacramento and San Joaquin
         # Sacramento WYT

@@ -35,6 +35,7 @@ from typing import Dict, List, Tuple
 import pandas as pd
 
 from utils import dss_io
+from utils.paths import get_periods
 
 
 DEFAULT_DSS_READ_START = "1921-10-31"
@@ -582,8 +583,8 @@ def plot_wyt_hist_validation(
     term_specs: List[TermSpec],
     figures_dir: Path,
     *,
-    plot_start: str | pd.Timestamp = "1971-10-01",
-    plot_end: str | pd.Timestamp = "2018-09-30",
+    plot_start: str | pd.Timestamp | None = None,
+    plot_end: str | pd.Timestamp | None = None,
     unit: str = "",
 ) -> List[Path]:
     """Write one TS+CDF figure per term comparing actual vs reconstructed.
@@ -596,6 +597,11 @@ def plot_wyt_hist_validation(
     Returns the list of TS+CDF figure paths written.
     """
     from utils.validation_plots import Series, plot_ts_cdf, plot_monthly_box
+
+    # I use the configured Product A window unless the caller gives a plot range.
+    validation = get_periods("product_a")["validation"]
+    plot_start = validation["start_date"] if plot_start is None else plot_start
+    plot_end = validation["end_date"] if plot_end is None else plot_end
 
     figures_dir = Path(figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
@@ -645,8 +651,8 @@ def plot_actual_vs_recon_validation(
     term_specs: List[TermSpec],
     figures_dir: Path,
     *,
-    plot_start: str | pd.Timestamp = "1971-10-01",
-    plot_end: str | pd.Timestamp = "2018-09-30",
+    plot_start: str | pd.Timestamp | None = None,
+    plot_end: str | pd.Timestamp | None = None,
     unit: str = "",
     label: str = "Product A",
     value_col: str = "wyt_monthly_avg",
@@ -675,6 +681,11 @@ def plot_actual_vs_recon_validation(
 
     if recon_long_df is None or recon_long_df.empty:
         return []
+
+    # I use the configured Product A window unless the caller gives a plot range.
+    validation = get_periods("product_a")["validation"]
+    plot_start = validation["start_date"] if plot_start is None else plot_start
+    plot_end = validation["end_date"] if plot_end is None else plot_end
 
     figures_dir = Path(figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)

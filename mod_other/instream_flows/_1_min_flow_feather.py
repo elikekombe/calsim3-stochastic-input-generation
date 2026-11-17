@@ -112,7 +112,7 @@ import numpy as np
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 from utils import dss_io
 
 # -----------------------------------------------------------------------------
@@ -133,9 +133,10 @@ MINFLOW_KEY    = ("MINFLOWFEATHER", "FLOW-MIN-REQUIRED")  # CS3 actual (Value_CS
 
 # Product A quantile-mapped UNIMP_OROV (WY 1972-2018), from the rim-inflow
 # Product A CSV (Part B == UNIMP_OROV).
+PRODUCT_A_VALIDATION = get_periods("product_a")["validation"]
 PATH_PRODUCT_A_CSV = (_rim_gen / "output" / "_2_qmap_historical_validation"
                       / "_product_a_validation"
-                      / "_riminflow_productA_1972_2018.csv")
+                      / f"_riminflow_productA_{PRODUCT_A_VALIDATION['start_water_year']}_{PRODUCT_A_VALIDATION['end_water_year']}.csv")
 
 # Product B directory (10 chunk CSVs)
 PATH_UNIMP_OROV_PB_DIR = _rim_gen / "output" / "_3_qmap_product_b"
@@ -151,7 +152,7 @@ OUT_VALIDATION = OUT_DIR / "_minflowfeather_validation_1922_2021.csv"
 
 # Output 2: Product A (WY 1972-2018, quantile-mapped input)
 OUT_PRODUCT_A_DIR = _gen / "output" / "_product_a_validation"
-OUT_PRODUCT_A = OUT_PRODUCT_A_DIR / "_minflowfeather_productA_1972_2018.csv"
+OUT_PRODUCT_A = OUT_PRODUCT_A_DIR / f"_minflowfeather_productA_{PRODUCT_A_VALIDATION['start_water_year']}_{PRODUCT_A_VALIDATION['end_water_year']}.csv"
 
 # Output 3: Product B - one file per chunk (n01 ... n10)
 OUT_PRODUCT_B_DIR = _gen / "output" / "_product_b_final"

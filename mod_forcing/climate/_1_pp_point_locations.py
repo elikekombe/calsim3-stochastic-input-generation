@@ -38,7 +38,7 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 
 
 def find_nearest_grid_cell(target_lat, target_lon, data_folder):
@@ -251,12 +251,16 @@ def process_location(location_name, target_lat, target_lon, data_folder, output_
     }
 
 
-def write_product_a_validation(summaries, output_folder, start_wy=1922, end_wy=2018):
+def write_product_a_validation(summaries, output_folder, start_wy=None, end_wy=None):
     """
     Create combined long-format validation CSV from processed Product A summaries.
     Output: _pp_precip_productA_{start_wy}_{end_wy}.csv
     Format: Part B, Part C, Year, Month, Value
     """
+    # I use configured climate-validation years unless this function is called with explicit years.
+    period = get_periods("product_a")["climate_validation"]
+    start_wy = period["start_water_year"] if start_wy is None else start_wy
+    end_wy = period["end_water_year"] if end_wy is None else end_wy
     start_date = pd.Timestamp(start_wy - 1, 10, 1)
     end_date = pd.Timestamp(end_wy, 9, 30)
 

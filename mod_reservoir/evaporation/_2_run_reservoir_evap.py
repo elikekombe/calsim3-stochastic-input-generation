@@ -50,7 +50,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_module_generated_dir, get_base_dir
+from utils.paths import get_module_generated_dir, get_base_dir, get_periods
 
 _gen = get_module_generated_dir("mod_reservoir/evaporation")
 
@@ -89,8 +89,8 @@ def _load_climate_data_product_b(file_path: str) -> pd.DataFrame:
 
 def process_reservoir(
     reservoir_code: str,
-    start_date: str = '1921-10-01',
-    end_date: str = '2018-09-30',
+    start_date: str = get_periods("product_a")["analysis"]["start_date"],
+    end_date: str = get_periods("product_a")["analysis"]["end_date"],
     output_dir: str = 'output/_2_run_reservoir_evap/Product_A',
     weather_dir: str = '../_00_Data/WGEN/Product_A/1',
     product_b: bool = False,
@@ -155,8 +155,8 @@ def process_reservoir(
 
 def process_reservoirs(
     reservoir_codes: list = None,
-    start_date: str = '1921-10-01',
-    end_date: str = '2018-09-30',
+    start_date: str = get_periods("product_a")["analysis"]["start_date"],
+    end_date: str = get_periods("product_a")["analysis"]["end_date"],
     output_dir: str = 'output/_2_run_reservoir_evap/Product_A',
     weather_dir: str = '../_00_Data/WGEN/Product_A/1',
     product_b: bool = False,
@@ -313,8 +313,8 @@ def create_summary_statistics(
 def create_validation_csv(
     output_dir=None,
     validation_dir=None,
-    start_wy: int = 1972,
-    end_wy: int = 2018
+    start_wy: int = get_periods("product_a")["validation"]["start_water_year"],
+    end_wy: int = get_periods("product_a")["validation"]["end_water_year"]
 ):
     """
     Create a combined validation CSV from individual reservoir files.
@@ -506,8 +506,8 @@ def create_temperature_range_boxplot(
             detail_df = pd.read_csv(detail_file)
             detail_df['date'] = pd.to_datetime(detail_df['date'])
             filtered = detail_df[
-                (detail_df['date'] >= '1921-10-01') &
-                (detail_df['date'] <= '2018-09-30')
+                (detail_df['date'] >= get_periods("product_a")["analysis"]["start_date"]) &
+                (detail_df['date'] <= get_periods("product_a")["analysis"]["end_date"])
             ]
             if len(filtered) > 0 and 'tmax_c' in filtered.columns and 'tmin_c' in filtered.columns:
                 orig_dtr = (filtered['tmax_c'] - filtered['tmin_c']).mean()
@@ -518,7 +518,7 @@ def create_temperature_range_boxplot(
             weather_file = find_nearest_weather_file(res_code)
             if weather_file is not None:
                 daily = load_climate_data(weather_file)
-                daily = daily.loc['1921-10-01':'2018-09-30']
+                daily = daily.loc[get_periods("product_a")["analysis"]["start_date"]:get_periods("product_a")["analysis"]["end_date"]]
                 if len(daily) > 0:
                     # Aggregate to monthly means first, then compute range
                     monthly = daily.resample('ME').mean()
@@ -678,8 +678,8 @@ def create_climate_boxplots(
             detail_df = pd.read_csv(detail_file)
             detail_df['date'] = pd.to_datetime(detail_df['date'])
             filtered = detail_df[
-                (detail_df['date'] >= '1921-10-01') &
-                (detail_df['date'] <= '2018-09-30')
+                (detail_df['date'] >= get_periods("product_a")["analysis"]["start_date"]) &
+                (detail_df['date'] <= get_periods("product_a")["analysis"]["end_date"])
             ]
             if len(filtered) > 0:
                 if 'tmin_c' in filtered.columns:
@@ -696,7 +696,7 @@ def create_climate_boxplots(
             weather_file = find_nearest_weather_file(res_code)
             if weather_file is not None:
                 daily = load_climate_data(weather_file)
-                daily = daily.loc['1921-10-01':'2018-09-30']
+                daily = daily.loc[get_periods("product_a")["analysis"]["start_date"]:get_periods("product_a")["analysis"]["end_date"]]
                 if len(daily) > 0:
                     monthly = daily.resample('ME').mean()
                     for var in variables:
@@ -838,8 +838,8 @@ def create_annual_boxplot(
             detail_df['date'] = pd.to_datetime(detail_df['date'])
             
             # Filter to Oct 1921 - Sep 2018
-            filtered = detail_df[(detail_df['date'] >= '1921-10-01') & 
-                                (detail_df['date'] <= '2018-09-30')]
+            filtered = detail_df[(detail_df['date'] >= get_periods("product_a")["analysis"]["start_date"]) &
+                                (detail_df['date'] <= get_periods("product_a")["analysis"]["end_date"])]
             
             if len(filtered) > 0:
                 # Calculate annual totals (water years)
@@ -875,8 +875,8 @@ def create_annual_boxplot(
                         pa_df['date'] = pd.to_datetime(pa_df['date'])
                     
                     # Filter to Oct 1921 - Sep 2018
-                    pa_filtered = pa_df[(pa_df['date'] >= '1921-10-01') & 
-                                       (pa_df['date'] <= '2018-09-30')]
+                    pa_filtered = pa_df[(pa_df['date'] >= get_periods("product_a")["analysis"]["start_date"]) &
+                                       (pa_df['date'] <= get_periods("product_a")["analysis"]["end_date"])]
                     
                     if len(pa_filtered) > 0:
                         # Calculate annual totals
