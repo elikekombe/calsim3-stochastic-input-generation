@@ -51,7 +51,7 @@ RUN_DIR = Path(__file__).resolve().parent
 REPO_ROOT = RUN_DIR.parents[1]
 
 _sys.path.insert(0, str(REPO_ROOT))
-from utils.paths import get_generated_dir
+from utils.paths import get_generated_dir, get_periods
 from utils.validation_plots import Series, plot_ts_cdf
 
 PICKLE_DIR = (
@@ -86,12 +86,14 @@ class Period:
     wy_end: int          # water-year end (inclusive)
 
 
+# I use configured Product A dates for the full validation report.
+_PRODUCT_A_VALIDATION = get_periods("product_a")["validation"]
 FULL_VALIDATION = Period(
-    name="Full_Validation_WY1972_2018",
-    start=pd.Timestamp("1971-10-01"),
-    end=pd.Timestamp("2018-09-30"),
-    wy_start=1972,
-    wy_end=2018,
+    name=f"Full_Validation_WY{_PRODUCT_A_VALIDATION['start_water_year']}_{_PRODUCT_A_VALIDATION['end_water_year']}",
+    start=pd.Timestamp(_PRODUCT_A_VALIDATION["start_date"]),
+    end=pd.Timestamp(_PRODUCT_A_VALIDATION["end_date"]),
+    wy_start=_PRODUCT_A_VALIDATION["start_water_year"],
+    wy_end=_PRODUCT_A_VALIDATION["end_water_year"],
 )
 
 DROUGHT_878892 = Period(

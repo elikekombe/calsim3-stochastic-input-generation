@@ -44,7 +44,9 @@ DSS_FILE = get_base_dir() / "CalSim3" / "__calsim_sv_default__.dss"
 DEFAULT_DSS_READ_START = "1915-01-31"
 DEFAULT_DSS_READ_END = "2021-12-31"
 _rim_gen = get_module_generated_dir("mod_hydrology/rim_inflow")
-DEFAULT_PRODUCT_A = _rim_gen / "output" / "_2_qmap_historical_validation" /"_product_a_validation"/"_riminflow_productA_1972_2018.csv"
+PRODUCT_A_VALIDATION = get_periods("product_a")["validation"]
+DEFAULT_PRODUCT_A = (_rim_gen / "output" / "_2_qmap_historical_validation" / "_product_a_validation"
+                    / f"_riminflow_productA_{PRODUCT_A_VALIDATION['start_water_year']}_{PRODUCT_A_VALIDATION['end_water_year']}.csv")
 DEFAULT_PRODUCT_B_DIR = _rim_gen / "output" / "_3_qmap_product_b"
 _gen = get_module_generated_dir("mod_other/instream_flows")
 DEFAULT_OUT_HIST = _gen / "output" / "_2_sjr_rest_req"
@@ -566,8 +568,8 @@ def plot_product_a_validation(
     figures_dir: Path,
     pulse_bpart: str = "REST_REQ_P",
     nonpulse_bpart: str = "REST_REQ_NP",
-    plot_start: str | pd.Timestamp = "1971-10-01",
-    plot_end: str | pd.Timestamp = "2018-09-30",
+    plot_start: str | pd.Timestamp | None = None,
+    plot_end: str | pd.Timestamp | None = None,
 ) -> list[Path]:
     """Write the canonical TS+CDF validation figures for Product A.
 
@@ -578,6 +580,10 @@ def plot_product_a_validation(
     import matplotlib.pyplot as plt
     from utils.validation_plots import Series, plot_ts_cdf
 
+    # I default the Product A plot range to config but keep explicit call overrides.
+    simulation = get_periods("product_a")["simulation"]
+    plot_start = simulation["start_date"] if plot_start is None else plot_start
+    plot_end = simulation["end_date"] if plot_end is None else plot_end
     figures_dir = Path(figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
 
@@ -629,8 +635,8 @@ def run_product_a(
         inflow.index, recon, default_rest_req, pulse_bpart, nonpulse_bpart,
     )
     outdir.mkdir(parents=True, exist_ok=True)
-    pulse_path = outdir / "_SJRRPreqPulse_productA_1972_2018.csv"
-    np_path = outdir / "_SJRRPreqNonPulse_productA_1972_2018.csv"
+    pulse_path = outdir / f"_SJRRPreqPulse_productA_{PRODUCT_A_VALIDATION['start_water_year']}_{PRODUCT_A_VALIDATION['end_water_year']}.csv"
+    np_path = outdir / f"_SJRRPreqNonPulse_productA_{PRODUCT_A_VALIDATION['start_water_year']}_{PRODUCT_A_VALIDATION['end_water_year']}.csv"
     to_output_format(p_series, pulse_bpart, part_c).to_csv(pulse_path, index=False)
     to_output_format(np_series, nonpulse_bpart, part_c).to_csv(np_path, index=False)
     written = [pulse_path, np_path]

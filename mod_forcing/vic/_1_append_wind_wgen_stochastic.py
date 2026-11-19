@@ -65,7 +65,8 @@ def add_wind(hist_file_name,
     """
     try:
         #---Open wind---
-        data_wind = pd.read_csv(os.path.join(hist_dir, hist_file_name), usecols=[3], delim_whitespace=True, header=None)
+        # I use the whitespace separator form supported by current pandas.
+        data_wind = pd.read_csv(os.path.join(hist_dir, hist_file_name), usecols=[3], sep=r'\s+', header=None)
         data_wind.columns = ['wind']  # Set column name for wind
         data_wind.insert(0, 'date', pd.date_range(hist_date_start, hist_date_end, freq='D')) # Add date column
         # Replace zero wind on leap days (1948-2020) with the neighboring-day mean.
@@ -82,11 +83,11 @@ def add_wind(hist_file_name,
            if previous_day in wind_by_date.index and next_day in wind_by_date.index:
               data_wind.loc[data_wind['date'].eq(date), 'wind'] = (
                 wind_by_date.loc[previous_day] + wind_by_date.loc[next_day]
-              ) / 2    
+              ) / 2
 
         #---Read wgen Data---
         f_name = hist_file_name.replace('data', 'meteo')
-        data_wgen = pd.read_csv(os.path.join(wgen_dir, f_name), usecols=[3, 4, 5], delim_whitespace=True, header=None)
+        data_wgen = pd.read_csv(os.path.join(wgen_dir, f_name), usecols=[3, 4, 5], sep=r'\s+', header=None)
         data_wgen.columns = ['pr', 'tmax', 'tmin']  # Set column names for WGEN format
         data_wgen.insert(3, 'resampled_date', wgen_sampled_dates['resmplDatesLoc'].values) # Add resampled dates
 

@@ -37,7 +37,7 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 
 
 class CompileStationsPrecipMM:
@@ -363,8 +363,8 @@ def main():
                     help='Directory containing WGEN met files. Default resolved from config.') 
     ap.add_argument('--output_csv', default=None,
                     help='Output CSV path. Defaults to ./output/Product_A/mm_pcp4.csv or Product_B/mm_pcp4.csv.') 
-    ap.add_argument('--start_date', default='1915-01-01', help='Start date (YYYY-MM-DD)') 
-    ap.add_argument('--end_date', default='2018-12-31', help='End date (YYYY-MM-DD)') 
+    ap.add_argument('--start_date', default=None, help='Start date (YYYY-MM-DD)')
+    ap.add_argument('--end_date', default=None, help='End date (YYYY-MM-DD)')
     ap.add_argument('--met_prefix', default='meteo', help='Met file prefix (default: meteo)') 
     ap.add_argument('--met_sep', default='\s+', help='Separator for met files (regex OK)') 
     ap.add_argument('--clip_period', nargs=2, default=None, help='Optional clip start end (YYYY-MM-DD) [Product A only]') 
@@ -382,6 +382,9 @@ def main():
     )
     product_b = args.product == 'B'
     if product_b:
+        start_date = args.start_date or '1915-01-01'
+        end_date = args.end_date or '2018-12-31'
+        clip_period = args.clip_period
         met_path   = args.met_path   or str(_base / 'WGEN' / 'Product_B' / '1')
         output_csv = args.output_csv or str(_gen / 'output' / '_1_compile_precip_DETAW' / 'Product_B' / 'mm_pcp4.csv')
         lodi_csv   = args.lodi_output_csv or str(_gen / 'output' / '_1_compile_precip_DETAW' / 'Product_B' / 'LODI_PT4.csv')
@@ -389,16 +392,21 @@ def main():
         met_path   = args.met_path   or str(_base / 'WGEN' / 'Product_A' / '1')
         output_csv = args.output_csv or str(_gen / 'output' / '_1_compile_precip_DETAW' / 'Product_A' / 'mm_pcp4.csv')
         lodi_csv   = args.lodi_output_csv or str(_gen / 'output' / '_1_compile_precip_DETAW' / 'Product_A' / 'LODI_PT4.csv')
+        # I use configured Product A WGEN coverage unless CLI dates are supplied.
+        period = get_periods('product_a')['input_compilation']['delta_channel_depletion']
+        start_date = args.start_date or period['start_date']
+        end_date = args.end_date or period['end_date']
+        clip_period = args.clip_period or period['clip_period']
 
     runner = CompileStationsPrecipMM(
         coord_file=coord_file,
         met_path=met_path,
         output_csv=output_csv,
-        start_date=args.start_date,
-        end_date=args.end_date,
+        start_date=start_date,
+        end_date=end_date,
         met_prefix=args.met_prefix,
         met_sep=args.met_sep,
-        clip_period=args.clip_period,
+        clip_period=clip_period,
         product_b=product_b,
     )
     runner.run()

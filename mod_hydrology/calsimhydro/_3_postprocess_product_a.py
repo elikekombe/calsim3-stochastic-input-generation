@@ -43,7 +43,7 @@ import matplotlib.pyplot as plt
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import csv_io, dss_io
-from utils.paths import get_module_generated_dir, get_inventory_dir
+from utils.paths import get_module_generated_dir, get_inventory_dir, get_periods
 
 
 # -- CONSTANTS -----------------------------------------------------------------
@@ -54,9 +54,11 @@ VALIDATE_DIR = str(_GEN_DIR / "output" / "_3_postprocess_product_a" / "_product_
 EXCEL_PATH = str(get_inventory_dir() / "_MASTER_INVENTORY_FOR_STOCHASTIC_INPUT_GENERATION_.xlsx")
 SHEET_NAME = "MASTER"
 
+# I read the Product A validation years from config instead of repeating them here.
 SCENARIO_LABELS = ['Historical', 'VIC_Precip', 'QM_ET', 'Product_A']
-START_WY = 1972
-END_WY = 2018
+_PRODUCT_A_VALIDATION = get_periods("product_a")["validation"]
+START_WY = _PRODUCT_A_VALIDATION["start_water_year"]
+END_WY = _PRODUCT_A_VALIDATION["end_water_year"]
 
 # DSS source definitions
 _cshydro_runs = _GEN_DIR / "CalSimHydro_Runs"

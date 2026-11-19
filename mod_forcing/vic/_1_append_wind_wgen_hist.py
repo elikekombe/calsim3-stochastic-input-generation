@@ -37,7 +37,7 @@ from pathlib import Path
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 
 
 def add_wind(wind_file_name,
@@ -119,6 +119,9 @@ def main():
                              "ignored for Historical_Unsplit.")
     args = parser.parse_args()
 
+    # I use the configured daily wind coverage instead of dates fixed in this script.
+    wind_period = get_periods("product_a")["wind_input"]
+
     # ---Set Directories---
     _base = get_base_dir()
     _gen = get_module_generated_dir("mod_forcing/vic")
@@ -152,8 +155,12 @@ def main():
     for i, wind_file_name in enumerate(wind_files):
         climate_file_name = (wind_file_name.replace('data', 'meteo')
                              if climate_named_meteo else wind_file_name)
-        processed_data = add_wind(wind_file_name, climate_file_name,
-                                  wind_dir=wind_dir, climate_dir=climate_dir)
+        processed_data = add_wind(
+            wind_file_name, climate_file_name,
+            wind_dir=wind_dir, climate_dir=climate_dir,
+            wind_date_start=wind_period["start_date"],
+            wind_date_end=wind_period["end_date"],
+        )
         if processed_data is None:
             n_skip += 1
             continue

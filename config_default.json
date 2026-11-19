@@ -4,5 +4,83 @@
     "archive_dir": "GENERATED_v1.0",
     "sacsma_repo": "../SAC-SMA",
     "sacsma_env": "sacsma",
-    "sacsma_commit": "1443ae0e616df71d1ae77029f8092e7f7ed90c78"
+    "sacsma_commit": "1443ae0e616df71d1ae77029f8092e7f7ed90c78",
+    "periods": {
+        "_comment": "Product A periods are separated by purpose so changing one does not change another.",
+        "product_a": {
+            "wind_input": {
+                "start_date": "1915-01-01",
+                "end_date": "2021-12-31"
+            },
+            "wgen_input": {
+                "start_date": "1915-01-01",
+                "end_date": "2018-12-31"
+            },
+            "precipitation_clip": {
+                "start_date": "1920-10-01",
+                "end_date": "2018-09-30"
+            },
+            "training": {
+                "start_date": "1921-10-01",
+                "end_date": "1971-09-30"
+            },
+            "simulation": {
+                "start_date": "1971-10-01",
+                "end_date": "2018-09-30"
+            },
+            "validation": {
+                "start_date": "1971-10-01",
+                "end_date": "2018-09-30",
+                "start_water_year": 1972,
+                "end_water_year": 2018
+            },
+            "climate_validation": {
+                "start_water_year": 1922,
+                "end_water_year": 2018
+            },
+            "input_compilation": {
+                "calsimhydro": {
+                    "start_date": "1915-01-01",
+                    "end_date": "2018-12-31",
+                    "clip_period": [
+                        "1920-10-01",
+                        "2018-09-30"
+                    ]
+                },
+                "calsimhydro_ee": {
+                    "start_date": "1915-01-01",
+                    "end_date": "2018-12-31",
+                    "clip_period": null
+                },
+                "small_watersheds": {
+                    "start_date": "1920-10-01",
+                    "end_date": "2021-09-30",
+                    "clip_period": null
+                },
+                "delta_channel_depletion": {
+                    "start_date": "1915-01-01",
+                    "end_date": "2018-12-31",
+                    "clip_period": null
+                }
+            },
+            "et_quantile_mapping": {
+                "training_start_water_year": 1921,
+                "training_end_water_year": 1971,
+                "simulation_start_water_year": 1972,
+                "simulation_end_water_year": 2018
+            },
+            "climate_processing": {
+                "start_date": "1920-10-01",
+                "end_date": "2021-09-30"
+            },
+            "analysis": {
+                "start_date": "1921-10-01",
+                "end_date": "2018-09-30"
+            },
+            "oroville_daily_precip": {
+                "start_date": "1915-10-01",
+                "end_date": "2018-09-30"
+            }
+        }
+    }
 }

@@ -48,7 +48,7 @@ from matplotlib.patches import Patch
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 from utils.quantile_mapping import qmap_single
 
 
@@ -361,8 +361,12 @@ def apply_vpd_quantile_mapping(temp_monthly, target_vpd, source_type):
         target_hist_vpd = target_vpd.iloc[:n_calib].copy().reset_index(drop=True)
     else:
         # Product_A / Historical: filter to calibration window then inner-merge
-        calib_start = (1921, 10)
-        calib_end   = (1971, 9)
+        # I read the calibration window from config so this comparison uses shared dates.
+        training_period = get_periods("product_a")["training"]
+        training_start = pd.Timestamp(training_period["start_date"])
+        training_end = pd.Timestamp(training_period["end_date"])
+        calib_start = (training_start.year, training_start.month)
+        calib_end = (training_end.year, training_end.month)
         basis_hist_temp = temp_basis_sim[
             ((temp_basis_sim['year'] == calib_start[0]) & (temp_basis_sim['month'] >= calib_start[1])) |
             ((temp_basis_sim['year'] > calib_start[0]) & (temp_basis_sim['year'] < calib_end[0])) |
@@ -554,8 +558,8 @@ def process_location(shorthand, grid_info_file, grid_info_folder, data_folder, o
 def create_validation_csv(
     source_dir: str = 'output/_2_uhh_basin_averages/product_a',
     validation_dir: str = 'output/_product_a_validation',
-    start_wy: int = 1971,
-    end_wy: int = 2018
+    start_wy: int | None = None,
+    end_wy: int | None = None
 ):
     """
     Create combined validation CSVs from individual UHH basin average files.
@@ -574,6 +578,12 @@ def create_validation_csv(
     end_wy : int
         End water year (default: 2018)
     """
+    # I use configured Product A years unless callers supply another range.
+    periods = get_periods("product_a")
+    simulation = periods["simulation"]
+    validation = periods["validation"]
+    start_wy = int(pd.Timestamp(simulation["start_date"]).year) if start_wy is None else start_wy
+    end_wy = validation["end_water_year"] if end_wy is None else end_wy
     source_path = Path(source_dir)
     if not source_path.exists():
         print(f"Error: {source_path} not found. Run Product_A processing first.")
@@ -742,12 +752,12 @@ def read_reference_data(excel_file, location_name, variable_type):
     
     # For VPD only, filter to Oct-1971 through Sept-2018 (WY1972-2018)
     if variable_type == 'vpd':
-        mask = (
-            ((result['year'] == 1971) & (result['month'] >= 10)) |
-            ((result['year'] > 1971) & (result['year'] < 2018)) |
-            ((result['year'] == 2018) & (result['month'] <= 9))
+        validation = get_periods("product_a")["validation"]
+        month_dates = (
+            pd.to_datetime(result[['year', 'month']].assign(day=1))
+            + pd.offsets.MonthEnd(0)
         )
-        result = result[mask]
+        result = result[month_dates.between(validation["start_date"], validation["end_date"])]
     
     return result[['year', 'month', 'value']]
 
@@ -783,12 +793,12 @@ def read_output_data(output_file, variable_type):
     
     # For VPD only, filter to Oct-1971 through Sept-2018 (WY1972-2018)
     if variable_type == 'vpd':
-        mask = (
-            ((result['year'] == 1971) & (result['month'] >= 10)) |
-            ((result['year'] > 1971) & (result['year'] < 2018)) |
-            ((result['year'] == 2018) & (result['month'] <= 9))
+        validation = get_periods("product_a")["validation"]
+        month_dates = (
+            pd.to_datetime(result[['year', 'month']].assign(day=1))
+            + pd.offsets.MonthEnd(0)
         )
-        result = result[mask]
+        result = result[month_dates.between(validation["start_date"], validation["end_date"])]
     
     return result
 
@@ -1170,7 +1180,7 @@ def run_validate_outputs(scenario):
     print(f"Annual comparison plots saved to: {validation_folder}")
 
 
-def write_product_a_validation(summaries, output_folder, start_wy=1922, end_wy=2018):
+def write_product_a_validation(summaries, output_folder, start_wy=None, end_wy=None):
     """
     Create combined long-format validation CSVs from processed Product A summaries.
     Output: _uhh_precip_productA_{start_wy}_{end_wy}.csv,
@@ -1178,6 +1188,10 @@ def write_product_a_validation(summaries, output_folder, start_wy=1922, end_wy=2
             _uhh_vpd_productA_{start_wy}_{end_wy}.csv
     Format: Part B, Part C, Year, Month, Value
     """
+    # I default the Product A climate-validation CSV to config unless years are passed.
+    period = get_periods("product_a")["climate_validation"]
+    start_wy = period["start_water_year"] if start_wy is None else start_wy
+    end_wy = period["end_water_year"] if end_wy is None else end_wy
     start_date = pd.Timestamp(start_wy - 1, 10, 1)
     end_date = pd.Timestamp(end_wy, 9, 30)
     output_path = Path(output_folder)
@@ -1786,14 +1800,14 @@ def parse_arguments():
     parser.add_argument(
         '--start_date',
         type=str,
-        default='1920-10-01',
-        help='Start date for analysis (default: 1920-10-01)'
+        default=get_periods('product_a')['climate_processing']['start_date'],
+        help='Start date for analysis (defaults to config; can be overridden on the command line)'
     )
     parser.add_argument(
         '--end_date',
         type=str,
-        default='2021-09-30',
-        help='End date for analysis (default: 2021-09-30)'
+        default=get_periods('product_a')['climate_processing']['end_date'],
+        help='End date for analysis (defaults to config; can be overridden on the command line)'
     )
     
     args = parser.parse_args()

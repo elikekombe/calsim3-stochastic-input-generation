@@ -37,7 +37,7 @@ from pydsstools.core import TimeSeriesContainer
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 
 
 class compile_wba_precip:
@@ -244,8 +244,8 @@ def main():
                         help='Path to WGEN met directory.')
     parser.add_argument('--output_path', type=str, default=None,
                         help='Path to output directory.')
-    parser.add_argument('--start_date', type=str, default='1915-01-01', help='Start date (YYYY-MM-DD) [Product A only]')
-    parser.add_argument('--end_date', type=str, default='2018-12-31', help='End date (YYYY-MM-DD) [Product A only]')
+    parser.add_argument('--start_date', type=str, default=None, help='Start date (YYYY-MM-DD) [Product A only]')
+    parser.add_argument('--end_date', type=str, default=None, help='End date (YYYY-MM-DD) [Product A only]')
     parser.add_argument('--wbas', type=str, nargs='*', default=None, help='wba names to select (optional)')
     parser.add_argument('--met_prefix', type=str, default='meteo', help='Prefix for met files')
     parser.add_argument('--met_sep', type=str, default='\\s+', help='Separator for met files')
@@ -262,21 +262,29 @@ def main():
     grid_info_file = args.grid_info_file or str(_script_dir / 'reference' / 'WBA_Grid_Info.txt')
     product_b = args.product == 'B'
     if product_b:
+        start_date = args.start_date or '1915-01-01'
+        end_date = args.end_date or '2018-12-31'
+        clip_period = args.clip_period
         met_path = args.met_path or str(_base / 'WGEN' / 'Product_B' / '1')
         output_path = args.output_path or str(_gen / 'output' / '_1_compile_precip' / 'Product_B')
     else:
         met_path = args.met_path or str(_base / 'WGEN' / 'Product_A' / '1')
         output_path = args.output_path or str(_gen / 'output' / '_1_compile_precip' / 'Product_A')
+        # I use config defaults for Product A; explicit CLI dates take priority.
+        period = get_periods('product_a')['input_compilation']['calsimhydro']
+        start_date = args.start_date or period['start_date']
+        end_date = args.end_date or period['end_date']
+        clip_period = args.clip_period or period['clip_period']
 
     rim = compile_wba_precip(
         grid_info_file=grid_info_file,
         met_path=met_path,
         output_path=output_path,
-        start_date=args.start_date,
-        end_date=args.end_date,
+        start_date=start_date,
+        end_date=end_date,
         met_prefix=args.met_prefix,
         met_sep=args.met_sep,
-        clip_period=args.clip_period,
+        clip_period=clip_period,
         product_b=product_b
     )
     wba_precip = rim.run(select_wba=args.wbas)

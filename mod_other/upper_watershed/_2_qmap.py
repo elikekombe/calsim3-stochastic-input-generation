@@ -52,7 +52,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods
 from utils.qmap_product_a_from_pairs import run_product_a_qmap_from_pairs
 from utils.qmap_product_b_from_pairs import (
     run_product_b_qmap_from_pairs,
@@ -125,7 +125,7 @@ def main() -> None:
             dss_file=dss_file,
             product_a_rim_csv=(
                 rim_gen / "output" / "_2_qmap_historical_validation"
-                / "_product_a_validation" / "_riminflow_productA_1972_2018.csv"
+                / "_product_a_validation" / f"_riminflow_productA_{get_periods('product_a')['validation']['start_water_year']}_{get_periods('product_a')['validation']['end_water_year']}.csv"
             ),
             output_dir=gen / "output" / "_2_qmap" / "product_a",
             validation_dir=gen / "output" / "_product_a_validation",
