@@ -194,7 +194,7 @@ def run_wyt(product: str, prefix: str, wyt_terms_df: pd.DataFrame,
 
     Naming convention for the per-term WYT intermediate file:
       A: ``<part_b>_product_a_<wy_min>_<wy_max>.csv`` (wy_min/max from framework)
-      B: ``<part_b>_product_b_<tag>.csv`` (tag = n01 .. n10 per stochastic chunk)
+      B: ``<part_b>_product_b_<tag>.csv`` (one numbered tag per configured chunk)
     """
     wyt_csv = base_dir / "_wyt_terms_tmp.csv"
     base_dir.mkdir(parents=True, exist_ok=True)

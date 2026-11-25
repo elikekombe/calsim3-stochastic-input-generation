@@ -1,10 +1,10 @@
 # Product B Production - Execution Runbook
 
-> **Scope:** the Product B pipeline -- 1000-year stochastic CalSim 3.0
-> input generation, delivered as **10 chunks of 100 water years** each
-> (`ProductB_SV_n01.dss` .. `ProductB_SV_n10.dss`, canonical window
-> Oct 1921 -- Sep 2021 per chunk; the first 9 months of each chunk are
-> skipped so each chunk starts in October / water-year aligned).
+> **Scope:** the Product B stochastic CalSim 3.0 input-generation pipeline.
+> The total WGEN simulation period and the CalSim period per chunk are read
+> from `periods.product_b` in `config_default.json` (or the user's `config.json`).
+> The number of complete chunks is the integer quotient of those values; any
+> trailing years that do not fill a complete chunk are dropped at the end.
 >
 > **Standalone document** at the repo root. Not part of the Sphinx build.
 >
@@ -39,7 +39,7 @@
 ```
 Tier 1  FORCING (mod_forcing)
     VIC:
-        python mod_forcing/vic/_1_append_wind_wgen_hist.py
+        python mod_forcing/vic/_1_append_wind_wgen_stochastic.py
         -> [EXTERNAL] VIC hydrologic model run
         python mod_forcing/vic/_2_compile_rim_inflows.py --product B
     Climate:
@@ -50,21 +50,21 @@ Tier 2  CORE HYDROLOGY (mod_hydrology)
     CalSimHydro:
         python mod_hydrology/calsimhydro/_1_compile_precip.py --product B
         python mod_hydrology/calsimhydro/_2_compile_et.py --product B --et_type all --vic_col_index 7 --write_dss
-        -> [EXTERNAL] CalSimHydro model run (10 chunks)
+        -> [EXTERNAL] CalSimHydro model run (the configured number of chunks)
         python mod_hydrology/calsimhydro/_4_postprocess_product_b.py
     CalSimHydroEE:
         python mod_hydrology/calsimhydro_ee/_1_compile_precip_EE.py --product B
-        -> [EXTERNAL] CalSimHydroEE model run (10 chunks)
+        -> [EXTERNAL] CalSimHydroEE model run (the configured number of chunks)
         python mod_hydrology/calsimhydro_ee/_3_postprocess_product_b.py
     Rim Inflow:
         python mod_hydrology/rim_inflow/_3_qmap_productB.py
     Small Watersheds:
         python mod_hydrology/small_watersheds/_1_compile_precip_sws.py --product B
-        -> [EXTERNAL] Small Watersheds model run (10 chunks)
+        -> [EXTERNAL] Small Watersheds model run (the configured number of chunks)
         python mod_hydrology/small_watersheds/_3_postprocess_product_b.py
     Delta Channel Depletion:
         python mod_hydrology/delta_channel_depletion/_1_compile_precip_DETAW.py --product B
-        -> [EXTERNAL] DETAW/DCD model run (10 chunks)
+        -> [EXTERNAL] DETAW/DCD model run (the configured number of chunks)
         python mod_hydrology/delta_channel_depletion/_3_postprocess_product_b.py
 
 Tier 3  WATER YEAR TYPES (mod_hydrology)
@@ -98,18 +98,15 @@ Tier 4  DEPENDENT MODULES
 
 Tier 5  FINAL COMPILATION (postprocessing)
         python postprocessing/sv_compile/product_b_compilation.py
-        -> ProductB_SV_n01.dss ... ProductB_SV_n10.dss  (10 x 100 WY)
+        -> ProductB_SV_n01.dss ... ProductB_SV_nNN.dss  (configured chunk count and length)
 
         python postprocessing/calsim_runs/infeasibilities/n10.py
-        -> ProductB_SV_n10_fixed.dss  (REQUIRED n10 cold-start fix: restores
-           baseline SV values for months <= Oct 1921 so the first simulation
-           timestep is feasible; preserves the Nov 1921 - Sep 2021 stochastic
-           sequence. Use the _fixed file as the n10 input to CalSim. Re-run
-           whenever ProductB_SV_n10.dss is recompiled. n10 is the only chunk
-           with an SV-side fix; the others are addressed via WRESL model code.)
+        -> ProductB_SV_n10_fixed.dss  (existing repair for the current default
+           configuration only; review its applicability before using it after
+           changing the configured chunk count or duration.)
 
         Optional CLI flags:
-          --chunks N [N ...]   Process specific chunks (default: all 10).
+          --chunks N [N ...]   Process specific chunks (default: all configured chunks).
           --skip-comparison    Skip the Product A vs B comparison step.
           --skip-dss           Skip DSS file generation (CSV only).
           --summary-figures    Regenerate figures from a previous compare CSV.
@@ -134,6 +131,29 @@ Rept pathway (`Constant_Rept = T` in the master inventory).
 
 ## B. Reference & config files
 
+Product B duration settings live in `config_default.json` under `periods.product_b`.
+The settings are also available in a user's `config.json`, which overrides the
+defaults:
+
+```json
+"product_b": {
+  "wgen_simulation_years": 1000,
+  "calsim_chunk_years": 100
+}
+```
+
+For example, setting 1,000 and 105 produces 9 complete 105-year chunks
+(945 usable years); the remaining 55 years (660 months) at the end are dropped.
+The external model runs must use the same configured chunk count and duration.
+This repository processes WGEN files that have already been generated; it does
+not run the external Weather Generator. A matching WGEN dataset and
+`resampled.dates_Product_B_<wgen_simulation_years>yr.csv` date map must exist
+before using a longer simulation period.
+The final comparison with the baseline is limited to the years available in
+both the configured chunk and the baseline DSS. The scripts under
+`postprocessing/calsim_runs/infeasibilities/` are incident-specific repairs or
+diagnostics; review them before using them with changed chunk boundaries.
+
 - `utils/paths.py` -- data-dir resolution (`config.json` overrides
   `config_default.json`; both git-ignored / tracked-default).
 - `inventory/_MASTER_INVENTORY_FOR_STOCHASTIC_INPUT_GENERATION_.xlsx`
@@ -145,8 +165,8 @@ Rept pathway (`Constant_Rept = T` in the master inventory).
 - `mod_hydrology/rim_inflow/reference/CalSim3_VIC_name_mapping.csv`,
   `RimInflowAnchor.xlsx` -- rim QM pairing + anchor/tributary mass
   balance (shared with Product A).
-- `BASE/WGEN/resampled.dates_Product_B_1000yr.csv` -- WGEN day-to-history
-  mapping consumed by closure_terms and day_volume_fractions.
+- `BASE/WGEN/resampled.dates_Product_B_<wgen_simulation_years>yr.csv` -- WGEN
+  day-to-history mapping consumed by the wind append and closure_terms scripts.
 - `.github/copilot-instructions.md` -- per-module script tables and the
   numbered-script convention enforced by `utils/check_scripts.py`.
 
@@ -160,9 +180,9 @@ byte-identical run-to-run on identical inputs.
 
 | Script | Command | Inputs | Outputs |
 |---|---|---|---|
-| vic/_1 | `python mod_forcing/vic/_1_append_wind_wgen_hist.py` | WGEN `Product_B` met files; historical wind | wind-appended VIC forcing |
-| [EXTERNAL] VIC | manual VIC model run (10 chunks) | wind-appended forcing | VIC flux files (RUNOFF + BASEFLOW) per chunk |
-| vic/_2 | `python mod_forcing/vic/_2_compile_rim_inflows.py --product B` | VIC fluxes; grid weights (incl. composite `CS3_8RI_SRBB_GridInfo.txt`) | routed monthly rim inflows `CS3_*_qmo_n{01..10}.csv` (+ DSS per chunk), incl. Bend Bridge `CS3_8RI_SRBB_qmo_n{01..10}.csv` (Shasta + above-SAC257 tributaries) |
+| vic/_1 | `python mod_forcing/vic/_1_append_wind_wgen_stochastic.py` | WGEN `Product_B` met files; historical wind | wind-appended VIC forcing |
+| [EXTERNAL] VIC | manual VIC model run (the configured number of chunks) | wind-appended forcing | VIC flux files (RUNOFF + BASEFLOW) per chunk |
+| vic/_2 | `python mod_forcing/vic/_2_compile_rim_inflows.py --product B` | VIC fluxes; grid weights (incl. composite `CS3_8RI_SRBB_GridInfo.txt`) | routed monthly rim inflows `CS3_*_qmo_n{01..N}.csv` (+ DSS per chunk), incl. Bend Bridge `CS3_8RI_SRBB_qmo_n{01..N}.csv` (Shasta + above-SAC257 tributaries) |
 | climate/_1 | `python mod_forcing/climate/_1_pp_point_locations.py --source Product_B --scenario 1` | WGEN met files; PP point reference | per-location monthly precip CSVs (per chunk) |
 | climate/_2 | `python mod_forcing/climate/_2_uhh_basin_averages.py --source Product_B --scenario 1` | WGEN met files; CS3 baseline DSS (UHH precip); grid weights | basin-average precip/Tmax/Tmin/VPD + `_product_b_final/` SV CSVs |
 
@@ -171,7 +191,7 @@ byte-identical run-to-run on identical inputs.
 ## Tier 2 - Core Hydrology (mod_hydrology)
 
 Each external-run model is a contiguous block: compile inputs ->
-[EXTERNAL] model run (10 chunks) -> postprocess scenario DSS into per-
+[EXTERNAL] model run (the configured number of chunks) -> postprocess scenario DSS into per-
 chunk CSVs under `_product_b_final/`.
 
 ### CalSimHydro (746 vars)
@@ -182,12 +202,12 @@ chunk CSVs under `_product_b_final/`.
 2. `python mod_hydrology/calsimhydro/_2_compile_et.py --product B --et_type all --vic_col_index 7 --write_dss --n_workers 8`
    - **Inputs:** VIC fluxes; WBA grid; CS3 RefETo DSS (QM target)
    - **Outputs:** monthly QM'd ET CSVs per WBA per chunk
-3. **[EXTERNAL] CalSimHydro model run (10 chunks)** -- manual; consumes
+3. **[EXTERNAL] CalSimHydro model run (the configured number of chunks)** -- manual; consumes
    the precip + ET above.
    - **Outputs:** `CalSimHydro_Runs/CalSimHydro_Product_B/
-     CS3L2015V0Hydro_SV_n{01..10}.DSS`, `RiceOutput_n{01..10}.DSS`,
+     CS3L2015V0Hydro_SV_n{01..N}.DSS`, `RiceOutput_n{01..N}.DSS`,
      `CalSimHydro_Rebalance_Runs/Rebalance_Product_B/
-     HydroRebalanceSJRdemands_n{01..10}.DSS`
+     HydroRebalanceSJRdemands_n{01..N}.DSS`
 4. `python mod_hydrology/calsimhydro/_4_postprocess_product_b.py`
    - Optional: `--sources cshydro rebalance rice`, `--chunks 1 2 3`,
      `--compare-a`, `--plot`
@@ -201,13 +221,13 @@ chunk CSVs under `_product_b_final/`.
 1. `python mod_hydrology/calsimhydro_ee/_1_compile_precip_EE.py --product B`
    - **Inputs:** WGEN met files; East-Side grid info
    - **Outputs:** daily East-Side precip CSVs per chunk
-2. **[EXTERNAL] CalSimHydroEE model run (10 chunks)**
+2. **[EXTERNAL] CalSimHydroEE model run (the configured number of chunks)**
    - **Outputs:** `CalSimHydroEE_Runs/CalSimHydroEE_Product_B/
-     CalSimHydroEE_DP_EA_n{01..10}.DSS`
+     CalSimHydroEE_DP_EA_n{01..N}.DSS`
 3. `python mod_hydrology/calsimhydro_ee/_3_postprocess_product_b.py`
    - Optional: `--chunks 1 2 3`, `--compare-a`, `--plot`
    - **Inputs:** external CSHydroEE DSS; master inventory
-   - **Outputs:** `_cshydroEE_productB_n{01..10}.csv`
+   - **Outputs:** `_cshydroEE_productB_n{01..N}.csv`
      (+ merged/summary/boxplots) and `_product_b_final/*.csv`
 
 ### Rim Inflow (227 vars)
@@ -216,7 +236,7 @@ chunk CSVs under `_product_b_final/`.
    - **Inputs:** VIC routed inflows (vic/_2); CS3 baseline DSS;
      `CalSim3_VIC_name_mapping.csv`; `RimInflowAnchor.xlsx`
    - **Outputs:** per-chunk QM'd rim inflows
-     `output/_3_qmap_product_b/<PartB>_qmo_n{01..10}.csv` (consumed by
+     `output/_3_qmap_product_b/<PartB>_qmo_n{01..N}.csv` (consumed by
      several Tier 4 modules + the final compiler)
 
 ### Small Watersheds (210 vars)
@@ -224,9 +244,9 @@ chunk CSVs under `_product_b_final/`.
 1. `python mod_hydrology/small_watersheds/_1_compile_precip_sws.py --product B`
    - **Inputs:** WGEN met files; SWS station list
    - **Outputs:** monthly SWS precip per chunk (in/mo)
-2. **[EXTERNAL] Small Watersheds model run (10 chunks)**
+2. **[EXTERNAL] Small Watersheds model run (the configured number of chunks)**
    - **Outputs:** `SmallWatersheds_Runs/SmallWatershed_Product_B/
-     CVSWShed_FlowContribution3pcntWBA24_2013Init_2021_n{01..10}.DSS`
+     CVSWShed_FlowContribution3pcntWBA24_2013Init_<configured-end-year>_n{01..N}.DSS`
 3. `python mod_hydrology/small_watersheds/_3_postprocess_product_b.py`
    - Optional: `--chunks 1 2 3`, `--compare-a`, `--plot`
    - **Inputs:** external SWS DSS; master inventory
@@ -237,14 +257,14 @@ chunk CSVs under `_product_b_final/`.
 1. `python mod_hydrology/delta_channel_depletion/_1_compile_precip_DETAW.py --product B`
    - **Inputs:** WGEN met files; DCD station list
    - **Outputs:** daily DCD-station precip per chunk
-2. **[EXTERNAL] DETAW/DCD model run (10 chunks)**
+2. **[EXTERNAL] DETAW/DCD model run (the configured number of chunks)**
    - **Outputs:** `DeltaChannelDepletion_Runs/
      DCD_Calsim3_PlanningStudy_Product_B/
-     CS3sv_DCD_PRISM_Dtrnd_n{01..10}.DSS`
+     CS3sv_DCD_PRISM_Dtrnd_n{01..N}.DSS`
 3. `python mod_hydrology/delta_channel_depletion/_3_postprocess_product_b.py`
    - Optional: `--chunks 1 2 3`, `--compare-a`, `--plot`
    - **Inputs:** external DCD DSS; master inventory (CFS->TAF)
-   - **Outputs:** `_dcd_productB_n{01..10}.csv` and
+   - **Outputs:** `_dcd_productB_n{01..N}.csv` and
      `_product_b_final/*.csv`
 
 ---
@@ -316,9 +336,9 @@ tools and are not part of the Product B pipeline.*
 
 1. `python mod_other/closure_terms/_1_ct_calculation.py --product B`
    - **Inputs:** CalSim baseline DSS (Part C = CLOSURE-TERM);
-     `BASE/WGEN/resampled.dates_Product_B_1000yr.csv`
-   - **Outputs:** `_product_b_final/<TERM>_productB_n{01..10}.csv`
-     (13 closure terms x 10 chunks)
+     `BASE/WGEN/resampled.dates_Product_B_<wgen_simulation_years>yr.csv`
+   - **Outputs:** `_product_b_final/<TERM>_productB_n{01..N}.csv`
+     (13 closure terms x the configured number of chunks)
 - *Optional diagnostic:* `--diagnostics` runs the WGEN methodology
   analysis (weighted-mean vs 4-yr-block-stitched correlations, coverage
   boxplots, etc.); not a Product A or B output. Mutually exclusive with
@@ -357,9 +377,9 @@ patterns auto-filled by the final compiler from the CalSim baseline
 
 | Script | Command | Inputs | Outputs |
 |---|---|---|---|
-| sv_compile (final) | `python postprocessing/sv_compile/product_b_compilation.py` (`--chunks N`; `--skip-comparison`; `--skip-dss`; `--summary-figures`) | every module's `_product_b_final/*.csv`; CS3 baseline DSS; master inventory; optional Product A compiled DSS for comparison | `ProductB_SV_n{01..10}.dss` (10 chunks; canonical window Oct 1921 - Sep 2021 / WY 1922-2021; first 9 months of each chunk skipped for water-year alignment); inventory cross-reference CSVs; `product_b_vs_a_comparison.csv` and `product_b_vs_calsim_base_comparison.csv` + per-category `figures/` |
-| n10 cold-start fix | `python postprocessing/calsim_runs/infeasibilities/n10.py` | compiled `ProductB_SV_n10.dss`; CalSim baseline DSS | `ProductB_SV_n10_fixed.dss` -- baseline SV values restored for months <= Oct 1921, curing the n10 first-timestep LP infeasibility caused by an extreme cold-start stochastic draw (Cosumnes/Sacramento inflows 10-60x baseline at Oct 1921); Nov 1921 - Sep 2021 stochastic sequence preserved. **Required:** use `_n10_fixed.dss` (not the raw `_n10.dss`) as the n10 input to CalSim, and re-run this script whenever n10 is recompiled. Only n10 needs an SV-side fix; other chunks are handled by WRESL model-code changes. |
-| (optional) calsim_runs | `python postprocessing/calsim_runs/_productB_pickle_builder.py`; `python postprocessing/calsim_runs/_productB_postproc.py` | external CalSim 3.0 run results consuming `ProductB_SV_n{01..10}.dss` | Product B run pickle cache (per-chunk values / diffs / units pkls) |
+| sv_compile (final) | `python postprocessing/sv_compile/product_b_compilation.py` (`--chunks N`; `--skip-comparison`; `--skip-dss`; `--summary-figures`) | every module's `_product_b_final/*.csv`; CS3 baseline DSS; master inventory; optional Product A compiled DSS for comparison | `ProductB_SV_n{01..N}.dss` (configured number of chunks and chunk length; each chunk starts in October at the established 1921-10 anchor; the first 9 months of the overall WGEN series are skipped before chunking for water-year alignment); inventory cross-reference CSVs; `product_b_vs_a_comparison.csv` and `product_b_vs_calsim_base_comparison.csv` + per-category `figures/` |
+| Existing n10 cold-start repair (configuration-specific) | `python postprocessing/calsim_runs/infeasibilities/n10.py` | The current default n10 output and CalSim baseline DSS | `ProductB_SV_n10_fixed.dss` for the existing default configuration. This repair was created for the current n10 sequence. A changed chunk length or chunk count changes the sequence boundaries; review the repair and cold-start behavior before using a different configuration. |
+| (optional) calsim_runs | `python postprocessing/calsim_runs/_productB_pickle_builder.py`; `python postprocessing/calsim_runs/_productB_postproc.py` | external CalSim 3.0 run results consuming `ProductB_SV_n{01..N}.dss` | Product B run pickle cache (per-chunk values / diffs / units pkls) |
 
 The final compiler auto-fills inventory "Constant/Rept" SVs from the
 baseline 12-month repeat (same logic as the Product A compiler).

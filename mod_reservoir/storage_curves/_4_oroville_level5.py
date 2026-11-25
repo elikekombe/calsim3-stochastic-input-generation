@@ -16,7 +16,7 @@ Inputs:
       Oroville_Daily_Precip_ProductA_Scenario1.csv  (year, month, day, precip_inches)
   Product B:
     <GENERATED>/mod_reservoir/storage_curves/output/_3_oroville_daily_precip/
-      oroville_daily_precip_productB_n01.csv ... n10.csv  (year, month, day, precip_inches)
+      oroville_daily_precip_productB_n{01..N}.csv  (year, month, day, precip_inches)
   Historical comparison (Product A only):
     <BASE>/CalSim3/__calsim_sv_default__.dss
       Part B: S_OROVLLEVEL5, Part C: STORAGE-LEVEL (monthly end-of-month series)
@@ -35,7 +35,7 @@ Outputs:
     _4_oroville_level5/figures/product_a/S_OROVLLEVEL5_monthly_pct_error.png
       WY-ordered (Oct-Sep) monthly box plot of percent error.
   Product B:
-    _product_b_final/S_OROVLLEVEL5_productB_n01.csv ... n10.csv
+    _product_b_final/S_OROVLLEVEL5_productB_n{01..N}.csv
       columns: Part B, Part C, Year, Month, Value
 
 Wetness index:
@@ -75,7 +75,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 from utils.validation_plots import Series, plot_monthly_box, plot_ts_cdf
 
 _gen = get_module_generated_dir("mod_reservoir/storage_curves")
@@ -84,7 +84,7 @@ OUTPUT_DIR = _gen / "output" / "_4_oroville_level5"
 VALIDATION_DIR = _gen / "output" / "_product_a_validation"
 PRODUCT_B_DIR = _gen / "output" / "_product_b_final"
 DEFAULT_DSS = get_base_dir() / "CalSim3" / "__calsim_sv_default__.dss"
-N_CHUNKS = 10
+N_CHUNKS = get_product_b_chunk_plan()["chunk_count"]
 
 
 def load_daily_precip_csv(csv_path: Path) -> pd.DataFrame:
@@ -255,7 +255,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--product", choices=["A", "B"], required=True,
-        help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).',
+        help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).',
     )
     parser.add_argument(
         "--chunks", nargs="+", type=int,

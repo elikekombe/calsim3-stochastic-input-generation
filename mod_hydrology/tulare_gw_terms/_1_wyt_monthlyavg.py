@@ -123,7 +123,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="Tulare GW terms via WYT monthly-average reconstruction.")
     ap.add_argument("--product", choices=["A", "B"], required=True,
-                    help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).')
+                    help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).')
     args = ap.parse_args()
 
     prefix = OUTPUT_PREFIX.strip() if OUTPUT_PREFIX else Path(terms_csv).stem

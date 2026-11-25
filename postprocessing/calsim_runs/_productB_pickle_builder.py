@@ -47,7 +47,7 @@ REFERENCE_DIR = RUN_DIR / "reference"
 sys.path.insert(0, str(REPO_ROOT))
 
 from utils.dss_pickle_builder import Scenario, build_pickles_from_metrics_csv
-from utils.paths import get_base_dir, get_generated_dir
+from utils.paths import get_base_dir, get_generated_dir, get_product_b_chunk_plan
 
 BASELINE_DSS = (
     get_base_dir()
@@ -75,7 +75,7 @@ PRODUCT_B_PICKLE_DIR = (
 )
 
 
-_BLOCK_RE = re.compile(r"(?<![A-Za-z0-9])n0*([1-9]|10)(?![A-Za-z0-9])", flags=re.IGNORECASE)
+_BLOCK_RE = re.compile(r"(?<![A-Za-z0-9])n0*(\d+)(?![A-Za-z0-9])", flags=re.IGNORECASE)
 
 
 def block_label_from_path(path: Path) -> str | None:
@@ -99,7 +99,7 @@ def discover_product_b_scenarios(product_b_root: str | Path, glob_pattern: str =
 
     if not discovered:
         raise FileNotFoundError(
-            f"No Product B DSS files matching n01..n10 were found beneath: {root}"
+            f"No Product B chunk DSS files matching n<number> were found beneath: {root}"
         )
 
     scenarios = [Scenario(name=label, dss_path=str(discovered[label])) for label in sorted(discovered)]
@@ -120,7 +120,7 @@ def build_product_b_pickles(
 
     missing_blocks = [
         f"n{i:02d}"
-        for i in range(1, 11)
+        for i in range(1, get_product_b_chunk_plan()["chunk_count"] + 1)
         if f"n{i:02d}" not in {scenario.name for scenario in scenarios[1:]}
     ]
     if missing_blocks:
@@ -135,7 +135,7 @@ def build_product_b_pickles(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build Product B pickles from a benchmark DSS and n01..n10 DSS blocks.")
+    parser = argparse.ArgumentParser(description="Build Product B pickles from a benchmark DSS and configured DSS chunks.")
     parser.add_argument("--baseline-name", default="Historical", help="Baseline scenario name")
     parser.add_argument(
         "--baseline-dss",

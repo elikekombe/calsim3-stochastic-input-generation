@@ -5,7 +5,7 @@ Computes grid-weighted daily basin-average precipitation (inches) for the
 Oroville/Feather River basin from WGEN weather data, using grid weights from
 CS3_8RI_OROVI_GridInfo.txt.
 
-For Product_B: 10 chunk CSVs of 100 water years each (WY1922-WY2021); skips
+For Product_B: one CSV per configured chunk; skips
 Jan-Sep of Year 1 to align to the October water-year start.
 For Product_A and Historical: single output files.
 
@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 _gen = get_module_generated_dir("mod_reservoir/storage_curves")
 _ref = Path(__file__).resolve().parents[2] / 'mod_forcing' / 'vic' / 'reference' / 'GridInfo'
@@ -257,7 +257,7 @@ def compare_product_a_vs_b(output_dir=None):
 
     Reads pre-generated outputs from disk:
       - Product A: Oroville_Daily_Precip_ProductA_Scenario1.csv
-      - Product B: oroville_daily_precip_productB_n01.csv ... n10.csv
+      - Product B: oroville_daily_precip_productB_n{01..N}.csv
 
     Computes mean daily precip (inches/day) by calendar month for each product
     and writes comparison_monthly_avg.csv to _compare_ab/.
@@ -447,9 +447,9 @@ def main():
 
     # Process data
     if args.source == 'Product_B':
-        # Read full 1000-year sequence using raw synthetic year numbers
+        # Read the configured stochastic sequence using raw synthetic year numbers
         # (years 1-1008 are below pandas Timestamp minimum and cannot be parsed directly)
-        print("\nReading Product B daily data (full 1000-year sequence)...")
+        print("\nReading Product B daily data (configured WGEN sequence)...")
         daily_df = calculate_basin_daily_precip_product_b(grid_info_df, data_folder)
 
         # Skip Jan-Sep of year 1 to align to October water year start
@@ -462,15 +462,15 @@ def main():
 
         # Chunk into 10 groups of 100 water years (same convention as rim inflow chunker)
         wys = sorted(daily_df['WY'].unique())
-        wys_per_chunk = 100
-        print(f"\nWriting 10 chunks of {wys_per_chunk} water years each (WY1922-WY2021 template)...")
-        for k in range(10):
+        wys_per_chunk = get_product_b_chunk_plan()["calsim_chunk_years"]
+        print(f"\nWriting {get_product_b_chunk_plan()['chunk_count']} chunks of {wys_per_chunk} water years each...")
+        for k in range(get_product_b_chunk_plan()["chunk_count"]):
             wy_chunk = set(wys[k * wys_per_chunk: (k + 1) * wys_per_chunk])
             chunk = daily_df[daily_df['WY'].isin(wy_chunk)].copy()
 
-            # Relabel years to template Oct 1921 - Sep 2021 (WY1922-WY2021).
+            # Relabel each chunk to the historical-epoch template anchored at Oct 1921.
             # Chunk k starts at Oct of synthetic year (1 + 100k); map that to 1921.
-            year_offset = 1920 - 100 * k
+            year_offset = 1920 - wys_per_chunk * k
             chunk['year'] = chunk['Year'] + year_offset
 
             out = chunk[['year', 'Month', 'Day', 'precip_inches']].rename(
@@ -478,7 +478,7 @@ def main():
             )
             output_file = output_dir / f'oroville_daily_precip_productB_n{k+1:02d}.csv'
             out.to_csv(output_file, index=False)
-            print(f"  Chunk {k+1:02d}/10: {len(out)} days | WY1922-WY2021 | {output_file.name}")
+            print(f"  Chunk {k+1:02d}/{get_product_b_chunk_plan()['chunk_count']}: {len(out)} days | {output_file.name}")
 
         print(f"\nProduct B outputs: {output_dir}")
 

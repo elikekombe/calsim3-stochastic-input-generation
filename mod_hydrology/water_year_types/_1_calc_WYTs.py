@@ -3,7 +3,7 @@ Calculate Water Year Types (WYTs)
 =================================
 Sacramento 40-30-30 Index and San Joaquin 60-20-20 Index calculations based
 on rim-inflow aggregations with recursive index formulas. Supports Product A
-(historical validation) and Product B (stochastic 1000-year).
+(historical validation) and Product B (configured stochastic period).
 
 Inputs
 ------
@@ -40,7 +40,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_module_generated_dir, get_periods
+from utils.paths import get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 _rim_gen = get_module_generated_dir("mod_hydrology/rim_inflow")
 _wyt_gen = get_module_generated_dir("mod_hydrology/water_year_types")
@@ -338,11 +338,10 @@ def process_product_a(input_path, output_dir, thresholds):
 
 def process_product_b(input_dir, output_dir, thresholds):
     """
-    Process Product B (1000-year stochastic) data.
-    Processes 10 x 100-year chunks separately.
+    Process Product B data using the configured number and length of chunks.
     
     Args:
-        input_dir: Directory containing *_qmo_n01.csv through *_qmo_n10.csv files
+        input_dir: Directory containing one *_qmo_nNN.csv file per configured chunk
         output_dir: Directory for output CSV files
         thresholds: Dict of WYT thresholds
     """
@@ -352,9 +351,10 @@ def process_product_b(input_dir, output_dir, thresholds):
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    # Process each of 10 chunks
-    for chunk_num in range(1, 11):
-        print(f"  Processing chunk n{chunk_num:02d} (years {(chunk_num-1)*100 + 1}-{chunk_num*100})...")
+    # Process each configured chunk
+    for chunk_num in range(1, get_product_b_chunk_plan()["chunk_count"] + 1):
+        chunk_years = get_product_b_chunk_plan()["calsim_chunk_years"]
+        print(f"  Processing chunk n{chunk_num:02d} ({chunk_years} water years)...")
         
         # Read all rim inflow components for this chunk
         chunk_data = {}
@@ -383,7 +383,7 @@ def process_product_b(input_dir, output_dir, thresholds):
             print(f"    WARNING: Missing components: {missing}")
         
         # Calculate WYTs for this chunk.
-        # Each chunk is an independent 100-year sequence mapped to a WY1922 start,
+        # Each chunk is independent and mapped to the configured calendar start,
         # so every chunk seeds the recursion with the 1921 index values (the year
         # preceding WY1922). From CDEC historical WYT data: 1921 Sac Index = 9.20,
         # SJ Index = 3.23.
@@ -391,7 +391,7 @@ def process_product_b(input_dir, output_dir, thresholds):
                                sac_initial_index=9.20,
                                sj_initial_index=3.23)
         
-        # Remap water years to CalSim convention (WY 1922-2021)
+        # Remap each chunk to the configured canonical CalSim water-year window
         # I label Product A water years from the configured climate-validation start.
         first_product_a_wy = get_periods('product_a')['climate_validation']['start_water_year']
         wyt_df['water_year'] = list(range(first_product_a_wy, first_product_a_wy + len(wyt_df)))
@@ -417,7 +417,7 @@ def process_product_b(input_dir, output_dir, thresholds):
 def main():
     parser = argparse.ArgumentParser(description='Calculate Water Year Types for CalSim')
     parser.add_argument('--product', choices=['A', 'B'], required=True,
-                        help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).')
+                        help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).')
     parser.add_argument('--product_a_input', 
                         default=str(_rim_gen / 'output' / '_2_qmap_historical_validation' / 'calsim_qmap_validation_TS.csv'),
                         help='Path to Product A input CSV')

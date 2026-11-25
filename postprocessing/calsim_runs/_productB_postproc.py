@@ -74,7 +74,7 @@ REPO_ROOT = RUN_DIR.parents[1]
 import sys as _sys
 
 _sys.path.insert(0, str(REPO_ROOT))
-from utils.paths import get_generated_dir
+from utils.paths import get_generated_dir, get_product_b_chunk_plan
 
 PICKLE_DIR = get_generated_dir() / "postprocessing" / "calsim_runs" / "product_b" / "pickle_files"
 OUT_DIR = get_generated_dir() / "postprocessing" / "calsim_runs" / "product_b" / "output"
@@ -87,7 +87,7 @@ PRODUCT_A_PICKLE_DIR = (
 )
 
 FIXED_COLS = {"Date", "Scenario", "OctSeptYear", "MarFebYear", "Year", "Month", "JanDecYear"}
-_BLOCK_RE = re.compile(r"(?<![A-Za-z0-9])n0*([1-9]|10)(?![A-Za-z0-9])", flags=re.IGNORECASE)
+_BLOCK_RE = re.compile(r"(?<![A-Za-z0-9])n0*(\d+)(?![A-Za-z0-9])", flags=re.IGNORECASE)
 
 DEFAULT_DROUGHT_PERCENTILE = 5.0
 HEATMAP_ROLLING_WINDOWS: Tuple[int, ...] = (5, 10)
@@ -2156,7 +2156,7 @@ def plot_1000yr_timeseries(
             if hist_years > 1:
                 tick_positions.append(hist_years)
                 tick_labels.append(str(hist_wys[-1]))
-        for product_b_index in range(100, stochastic_years + 1, 100):
+        for product_b_index in range(get_product_b_chunk_plan()["calsim_chunk_years"], stochastic_years + 1, get_product_b_chunk_plan()["calsim_chunk_years"]):
             tick_positions.append(hist_years + product_b_index)
             tick_labels.append(str(product_b_index))
         ax.set_xticks(tick_positions)
@@ -2164,8 +2164,8 @@ def plot_1000yr_timeseries(
 
         minor_positions = [
             hist_years + product_b_index
-            for product_b_index in range(50, stochastic_years + 1, 50)
-            if product_b_index % 100 != 0
+            for product_b_index in range(max(1, get_product_b_chunk_plan()["calsim_chunk_years"] // 2), stochastic_years + 1, max(1, get_product_b_chunk_plan()["calsim_chunk_years"] // 2))
+            if product_b_index % get_product_b_chunk_plan()["calsim_chunk_years"] != 0
         ]
         ax.xaxis.set_minor_locator(mticker.FixedLocator(minor_positions))
         ax.tick_params(axis="both", labelsize=9, color="#555555", labelcolor="#333333")

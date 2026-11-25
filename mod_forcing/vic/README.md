@@ -16,8 +16,8 @@ WGEN outputs precip and temperature but not wind. These scripts merge historical
 - Matches by date (1915-2021)
 - Output: `data/GENERATED/mod_hydrology/vic/input/Product_A/{scenario}/meteo_*`
 
-**`_1_append_wind_wgen_stochastic.py`** — Product B (1000-year stochastic)
-- Uses `data/BASE/WGEN/resampled.dates_Product_B_1000yr.csv` to map stochastic dates → historical wind dates
+**`_1_append_wind_wgen_stochastic.py`** — Product B stochastic WGEN
+- Uses `data/BASE/WGEN/resampled.dates_Product_B_<wgen_simulation_years>yr.csv` to map stochastic dates → historical wind dates
 - WGEN files from `data/BASE/WGEN/Product_B/{scenario}/`
 - Output: `data/GENERATED/mod_hydrology/vic/input/Product_B/{scenario}/meteo_*`
 
@@ -99,7 +99,7 @@ python mod_forcing/vic/_2_compile_rim_inflows.py --product A \
     --fluxes_path data/GENERATED/mod_hydrology/vic/output/fluxes/Product_A/1 \
     --output_path data/GENERATED/mod_hydrology/vic/output/routed/Product_A/1
 
-# Product B (10 chunks of 100 water years)
+# Product B (chunk years and total WGEN years come from config_default.json)
 python mod_forcing/vic/_2_compile_rim_inflows.py --product B \
     --fluxes_path data/GENERATED/mod_hydrology/vic/output/fluxes/Product_B/1 \
     --output_path data/GENERATED/mod_hydrology/vic/output/routed/Product_B/1
@@ -108,10 +108,12 @@ python mod_forcing/vic/_2_compile_rim_inflows.py --product B \
 Grid info defaults to `mod_forcing/vic/reference/GridInfo/` (override with `--grid_info_path`).
 
 **Product B chunking:**
-- Skips first 9 months to align to October (water year start)
-- Outputs 10 files per watershed: `*_qmo_n01.csv` through `*_qmo_n10.csv`
-- Each file contains 100 full water years (Oct–Sep), stamped as WY1922–WY2021
-- n01 = stochastic months 10–1209, n02 = months 1210–2409, etc.
+- Reads the total WGEN years and CalSim years per chunk from `periods.product_b` in `config_default.json` (or `config.json`)
+- Uses only complete chunks; any remaining years at the end are discarded
+- Skips the first 9 months to align to October (water year start)
+- Outputs one file per watershed per configured chunk (`*_qmo_n01.csv`, `n02`, and so on)
+- Each file contains the configured number of full water years (Oct–Sep)
+- The VIC input and routed output must cover the configured retained period
 
 **Options:**
 - `--watersheds NAME [NAME ...]` — process only specified watersheds

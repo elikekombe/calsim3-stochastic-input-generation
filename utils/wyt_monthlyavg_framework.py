@@ -30,6 +30,8 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+
+from utils.paths import get_product_b_chunk_plan
 from typing import Dict, List, Tuple
 
 import pandas as pd
@@ -782,7 +784,7 @@ def compute_product_targets(
         name = "product_a"
         targets[name] = compute_target_from_wyt(wyt_tables, pat_wide, term_specs)
     else:
-        for i in range(1, 11):
+        for i in range(1, get_product_b_chunk_plan()["chunk_count"] + 1):
             ensemble = f"n{str(i).zfill(2)}"
             wyt_tables = _load_product_b_wyts(Path(wyt_target_dir), basin_tags, ensemble)
             name = f"product_b_{ensemble}"

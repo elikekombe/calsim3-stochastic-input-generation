@@ -2,7 +2,7 @@
 Quantile-Map Product B Rim Inflows
 ==================================
 Train on the full historical overlap (Oct 1921 - Dec 2018) and apply to
-Product B stochastic VIC routed flows (10 chunks x 100 water years).
+Product B stochastic VIC routed flows split into configured chunks.
 
 The training basis (VIC historical source) is selectable with --basis: the
 default Product_A reproduces the historical behavior and output location, while
@@ -13,10 +13,10 @@ Workflow
 --------
 1. Load CalSim <-> VIC pairings from CalSim3_VIC_name_mapping.csv.
 2. Build training distributions from Product A VIC and CalSim DSS data.
-3. For each pair, concatenate all 10 Product B chunks into one series,
+3. For each pair, concatenate all configured Product B chunks into one series,
    run qmap_single() once, then split mapped values back per chunk.
 4. Enforce anchor/tributary mass balance (RimInflowAnchor.xlsx).
-5. Write per-inflow CSVs: <CalSim>_<VIC>_qmo_n01.csv ... n10.csv
+5. Write per-inflow CSVs: <CalSim>_<VIC>_qmo_n01.csv through n{N}.csv
 
 Uses multiprocessing (ProcessPoolExecutor) for step 3.
 
@@ -54,7 +54,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_inventory_dir, get_module_generated_dir
+from utils.paths import (get_base_dir, get_inventory_dir, get_module_generated_dir,
+                         get_product_b_chunk_plan)
 from utils.quantile_mapping import qmap_single
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
@@ -98,11 +99,9 @@ def resolve_basis_paths(basis):
 vic_hist_dir, BASE_OUT_DIR = resolve_basis_paths(DEFAULT_BASIS)
 OUT_TS_DIR    = BASE_OUT_DIR
 
-# All Product B chunks span exactly 100 water years (Oct 1921 - Sep 2021,
-# i.e. WY 1922-2021).  We enforce this canonical date range regardless of
-# whatever year labels the VIC source files happen to carry, so mismatched
-# file timestamps can never corrupt the output Year/Month columns.
-PRODUCT_B_MONTHS    = 1200                   # 100 WY x 12 months
+# Enforce the configured chunk length regardless of the VIC file's synthetic
+# year labels.  Output dates retain the established 1921-10 month-end anchor.
+PRODUCT_B_MONTHS    = get_product_b_chunk_plan()["months_per_chunk"]
 PRODUCT_B_START     = pd.Timestamp("1921-10-31")   # first month-end date
 
 ANCHOR_XLSX  = str(_SCRIPT_DIR / "reference" / "RimInflowAnchor.xlsx")
@@ -198,7 +197,7 @@ def timeseries_sort_key(label: str):
     """
     Numeric ordering for time series labels like:
       01, 02, ..., 10
-      n01, n02, ..., n10
+      n01, n02, ... through the configured final chunk
     Falls back to string ordering if no digits are present.
     """
     s = str(label)
@@ -243,13 +242,13 @@ def load_vic_sim_series(vic_name: str, sim_dir: str, ts: str):
 
     if len(vals) != PRODUCT_B_MONTHS:
         raise ValueError(
-            f"{fname}: expected {PRODUCT_B_MONTHS} rows (Oct 1921 - Sep 2021) "
+            f"{fname}: expected {PRODUCT_B_MONTHS} monthly rows for the configured "
+            f"{get_product_b_chunk_plan()['calsim_chunk_years']}-year chunk "
             f"but got {len(vals)}."
         )
 
-    # Enforce the canonical Product B date range (Oct 1921 - Sep 2021), ignoring
-    # whatever year/month labels the VIC file contains.  All Product B chunks must
-    # span exactly 100 water years using this convention.
+    # Enforce a continuous monthly index for one configured chunk, ignoring the
+    # synthetic year labels carried by VIC output files.
     canonical_idx = pd.date_range(PRODUCT_B_START, periods=PRODUCT_B_MONTHS, freq="ME")
 
     ser = pd.Series(vals, index=canonical_idx, name=vic_name)
@@ -457,7 +456,7 @@ def main(basis=DEFAULT_BASIS):
     # Build full anchor map once
     anchor_map_full = build_anchor_map(calsim_inflows)
 
-    # Detect Product B time series files (e.g. 01..10 or n01..n10)
+    # Detect Product B time series files (e.g. 01..N or n01..nN)
     timeseries_list = find_timeseries_in_dir(vic_sim_dir)
     if not timeseries_list:
         print("  ERROR: No Product B time series files found.")

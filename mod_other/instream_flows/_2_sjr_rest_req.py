@@ -651,9 +651,9 @@ def run_product_a(
 
 
 def infer_b_suffix(path: Path) -> str:
-    match = re.search(r"_n(\d{2})\.csv$", path.name, flags=re.IGNORECASE)
+    match = re.search(r"_n(\d+)\.csv$", path.name, flags=re.IGNORECASE)
     if not match:
-        raise ValueError(f"Could not infer n## suffix from {path.name}")
+        raise ValueError(f"Could not infer chunk suffix from {path.name}")
     return f"n{match.group(1)}"
 
 
@@ -695,7 +695,7 @@ def main() -> None:
         description="Reconstruct REST_REQ_NP and REST_REQ_P from UNIMP_SJ unimpaired flow.")
     ap.add_argument("--product", choices=["validation", "A", "B"], required=True,
                     help="Output to run: validation (historical-comparison CSV), "
-                         "A (Product A historical 1972-2018), or B (Product B 10 chunks).")
+                         "A (Product A historical 1972-2018), or B (Product B configured chunks).")
     args = ap.parse_args()
 
     written: list[Path] = []

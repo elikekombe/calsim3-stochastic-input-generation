@@ -45,7 +45,7 @@ from pydsstools.core import TimeSeriesContainer
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_archive_dir, get_module_generated_dir, get_periods
+from utils.paths import get_archive_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 # Local quantile mapping utility
 from utils.quantile_mapping import qmap_single
@@ -161,7 +161,10 @@ class CompileWBAET:
 		df = pd.read_csv(fname, sep="\t", header=None, engine="python")
 		vic_col_idx = self.vic_col_index - 1 if self.et_type == 'PanEvap' else self.vic_col_index
 		col = df.iloc[:, vic_col_idx].astype(float)
-		col.index = dates[:len(col)]
+		if self.product_b:
+			col.index = pd.period_range(start="2025-01-01", periods=len(col), freq="D")
+		else:
+			col.index = dates[:len(col)]
 		return col
 
 	# ---------- Core computations ----------
@@ -179,12 +182,13 @@ class CompileWBAET:
 		else:
 			path = self.vic_path
 			dates = self.dates_daily
-		result = pd.Series(0.0, index=dates)
+		result = None if (self.product_b and not use_hist) else pd.Series(0.0, index=dates)
 		area_sum = 0.0
 		for _, row in grid_info.iterrows():
 			et_mm = self._read_vic_flux_for_grid(row.lat, row.lon, path=path, dates=dates)
 			weight = float(row.pct_area)
-			result = result.add(et_mm * weight, fill_value=0.0)
+			weighted_et = et_mm * weight
+			result = weighted_et if result is None else result.add(weighted_et, fill_value=0.0)
 			area_sum += weight
 		if area_sum == 0:
 			raise ValueError("Total pct_area is zero for this WBA")
@@ -290,12 +294,12 @@ class CompileWBAET:
 	def _build_product_b_monthly_chunk(self, values, chunk_idx):
 		"""Build Jan 1920 - Dec 2021 monthly data array for one Product B chunk.
 
-		Core (non-overlapping): Oct 1921 - Sep 2021 (1200 months = 100 WY).
+		Core (non-overlapping): configured chunk length, starting Oct 1921.
 		Jan 1921 - Sep 1921: data preceding this chunk's core.
 		Oct 2021 - Dec 2021: data following this chunk's core.
 		Jan 1920 - Dec 1920: Backfill (duplicate of Jan-Dec 1921).
 		"""
-		months_per_chunk = 1200
+		months_per_chunk = get_product_b_chunk_plan()["months_per_chunk"]
 		skip_months = 9
 		pre_core_months = 9
 		suffix_months = 3
@@ -315,19 +319,19 @@ class CompileWBAET:
 		return np.concatenate([backfill, natural])
 
 	def _write_product_b_chunks_csv(self, results: Dict[str, pd.Series]) -> None:
-		"""Split 1000-year monthly QM ET into 10 chunks.
-		Each chunk outputs Jan 1920 - Dec 2021 (1224 months).
-		Core: Oct 1921 - Sep 2021 (100 WY, non-overlapping).
+		"""Split monthly QM ET into configured chunks.
+		Each chunk outputs 24 surrounding months plus the configured core.
+		Core: configured chunk length, non-overlapping across chunks.
 		Jan 1920 - Dec 1920: backfill (copy of Jan-Dec 1921).
-		Oct 2021 - Dec 2021: from subsequent chunk's data.
+		The 3 months after the core are taken from the subsequent series.
 		"""
-		months_per_chunk = 1200
+		months_per_chunk = get_product_b_chunk_plan()["months_per_chunk"]
 		skip_months = 9
-		total_chunks = 10
+		total_chunks = get_product_b_chunk_plan()["chunk_count"]
 		total_needed = skip_months + months_per_chunk * total_chunks + 3
 		wba_dir = os.path.join(self.output_path, 'wba')
 		os.makedirs(wba_dir, exist_ok=True)
-		date_template = pd.date_range('1920-01-31', '2021-12-31', freq='ME')
+		date_template = pd.date_range('1920-01-31', periods=months_per_chunk + 24, freq='ME')
 		print(f"  Product B: {months_per_chunk} core months/chunk, {len(date_template)} output months/chunk, {total_chunks} chunks")
 		for wba, series in results.items():
 			vals = series.values
@@ -342,11 +346,11 @@ class CompileWBAET:
 				})
 				out_file = os.path.join(wba_dir, f"{wba}_{self.et_type}_n{i+1:02d}.csv")
 				df.to_csv(out_file, header=False, index=False)
-				print(f"    Chunk {i+1:02d}/10: {os.path.basename(out_file)}")
+				print(f"    Chunk {i+1:02d}/{total_chunks}: {os.path.basename(out_file)}")
 
 	def _write_product_b_dss(self, results: Dict[str, pd.Series]) -> None:
 		"""Write 10 per-chunk DSS files for Product B, Jan 1920 - Dec 2021 each."""
-		total_chunks = 10
+		total_chunks = get_product_b_chunk_plan()["chunk_count"]
 		start_dt_str = "31JAN1920 24:00:00"
 		if self.et_type == 'CropET':
 			dss_stem = "CS3_ET"
@@ -356,7 +360,7 @@ class CompileWBAET:
 			dss_stem = "CS3_RefET"
 		for i in range(total_chunks):
 			dss_out = os.path.join(self.output_path, f"{dss_stem}_n{i+1:02d}.dss")
-			print(f"  Writing DSS chunk {i+1:02d}/10: {os.path.basename(dss_out)}")
+			print(f"  Writing DSS chunk {i+1:02d}/{total_chunks}: {os.path.basename(dss_out)}")
 			with dss_io.open_dss(dss_out, version=6, catalog_flag=False) as dss:
 				for wba, series in results.items():
 					chunk = self._build_product_b_monthly_chunk(series.values, i)
@@ -644,7 +648,7 @@ def main():
 		"--product",
 		choices=['A', 'B'],
 		required=True,
-		help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).',
+		help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).',
 	)
 	parser.add_argument(
 		"--hist_vic_path",

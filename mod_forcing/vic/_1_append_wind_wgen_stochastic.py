@@ -236,14 +236,20 @@ def main(argv=None):
 
     # Resolve paths only when executed so importing helpers never starts the job.
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from utils.paths import get_base_dir, get_module_generated_dir
+    from utils.paths import get_base_dir, get_module_generated_dir, get_product_b_chunk_plan
 
+    plan = get_product_b_chunk_plan()
     base_dir = get_base_dir()
     wgen_dir = base_dir / "WGEN" / "Product_B" / "1"
     wind_dir = base_dir / "Historical_Climate_LTO" / "1_Historical"
     output_dir = get_module_generated_dir("mod_forcing/vic") / "input" / "Product_B" / "1"
-    date_map_path = base_dir / "WGEN" / "resampled.dates_Product_B_1000yr.csv"
+    date_map_path = base_dir / "WGEN" / f"resampled.dates_Product_B_{plan['wgen_simulation_years']}yr.csv"
 
+    if not date_map_path.is_file():
+        raise FileNotFoundError(
+            f"No WGEN date map is available for the configured "
+            f"{plan['wgen_simulation_years']}-year simulation: {date_map_path}"
+        )
     sampled_dates = pd.read_csv(date_map_path)
     if "resmplDatesLoc" not in sampled_dates.columns:
         raise ValueError("Date map is missing required column 'resmplDatesLoc'")
@@ -257,6 +263,10 @@ def main(argv=None):
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Start year: {args.start_year}")
+    print(f"Configured WGEN simulation: {plan['wgen_simulation_years']} years")
+    print(f"CalSim chunks: {plan['chunk_count']} x {plan['calsim_chunk_years']} years; "
+          f"discarding {plan['discarded_years']} trailing years "
+          f"({plan['discarded_months']} months)")
     print(f"Historical wind files: {len(historical_files)}")
     print(f"Date-map rows: {len(sampled_dates)}")
 
