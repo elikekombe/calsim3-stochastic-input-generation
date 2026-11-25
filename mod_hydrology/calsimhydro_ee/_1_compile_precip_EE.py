@@ -16,8 +16,8 @@ Inputs
 Outputs
 -------
 - output/_1_compile_precip_EE/Product_A/pcp/<WBA>_pcp.csv
-- output/_1_compile_precip_EE/Product_B/pcp/<WBA>_pcp_n01.csv ... n10.csv
-- (optional) CS3_DailyPrecipitation_EE.dss  /  CS3_DailyPrecipitation_EE_n01.dss ... n10.dss
+- output/_1_compile_precip_EE/Product_B/pcp/<WBA>_pcp_n{01..N}.csv
+- (optional) CS3_DailyPrecipitation_EE.dss  /  CS3_DailyPrecipitation_EE_n{01..N}.dss
 
 Usage
 -----
@@ -25,7 +25,7 @@ Usage
     python mod_hydrology/calsimhydro_ee/_1_compile_precip_EE.py --product A \
         --clip_period 1920-10-01 2018-09-30
 
-    # Product B (10 chunks)
+    # Product B configured chunks
     python mod_hydrology/calsimhydro_ee/_1_compile_precip_EE.py --product B
 
     # Process specific WBAs only (Product A)
@@ -47,7 +47,7 @@ from pydsstools.core import TimeSeriesContainer
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 
 class CompileWBAPrecipEE:
@@ -117,16 +117,19 @@ class CompileWBAPrecipEE:
         if not series_list:
             raise ValueError("No precipitation series found for WBA.")
 
-        # Align length check
-        n_days = len(self.dates)
-        for s in series_list:
-            if len(s) != n_days:
-                raise ValueError(f"Length mismatch: expected {n_days} days, got {len(s)}")
+        # All selected grid files must cover the same daily sequence.
+        n_days = len(series_list[0])
+        for series in series_list:
+            if len(series) != n_days:
+                raise ValueError(f"Length mismatch: expected {n_days} days, got {len(series)}")
 
         # Simple average
         avg_mm = sum(series_list) / len(series_list)
         avg_in = avg_mm * 0.0393701
-        avg_in.index = self.dates[:len(avg_in)]
+        if self.product_b:
+            avg_in.index = pd.period_range(start="2025-01-01", periods=n_days, freq="D")
+        else:
+            avg_in.index = self.dates[:n_days]
         return avg_in
 
     def run(self, select_wbas=None):
@@ -156,12 +159,14 @@ class CompileWBAPrecipEE:
     def _build_product_b_chunk(self, values, chunk_idx):
         """Build Jan 1920 - Dec 2021 data array for one Product B chunk.
 
-        Core (non-overlapping): Oct 1921 - Sep 2021 (100 water years).
+        Core (non-overlapping): configured number of water years, starting Oct 1921.
         Jan 1921 - Sep 1921: WGEN data preceding this chunk's core.
-        Oct 2021 - Dec 2021: WGEN data following this chunk's core.
+        The next three months: WGEN data following this chunk's core.
         Jan 1920 - Dec 1920: Backfill (duplicate of Jan 1921 - Dec 1921).
         """
-        core_template = pd.date_range('1921-10-01', '2021-09-30', freq='D')
+        chunk_years = get_product_b_chunk_plan()["calsim_chunk_years"]
+        core_end = pd.Timestamp('1921-10-01') + pd.DateOffset(years=chunk_years) - pd.Timedelta(days=1)
+        core_template = pd.date_range('1921-10-01', core_end, freq='D')
         core_days = len(core_template)
         skip_days = 273   # Jan 1 - Sep 30
         pre_core_days = 273
@@ -189,14 +194,17 @@ class CompileWBAPrecipEE:
 
     def _write_product_b_chunks(self, results, pcp_dir):
         # Output Jan 1920 - Dec 2021 per chunk.
-        # Core: Oct 1921 - Sep 2021 (100 WY, non-overlapping across chunks).
+        # Core: configured chunk length, non-overlapping across chunks.
         # Jan 1920 - Dec 1920: backfill (copy of Jan-Dec 1921).
         # Oct 2021 - Dec 2021: from subsequent chunk's WGEN data.
-        date_template = pd.date_range('1920-01-01', '2021-12-31', freq='D')
-        core_template = pd.date_range('1921-10-01', '2021-09-30', freq='D')
+        chunk_years = get_product_b_chunk_plan()["calsim_chunk_years"]
+        core_end = pd.Timestamp('1921-10-01') + pd.DateOffset(years=chunk_years) - pd.Timedelta(days=1)
+        output_end = pd.Timestamp(core_end.year, core_end.month, 1) + pd.DateOffset(months=4) - pd.Timedelta(days=1)
+        date_template = pd.date_range('1920-01-01', output_end, freq='D')
+        core_template = pd.date_range('1921-10-01', core_end, freq='D')
         core_days = len(core_template)
         skip_days = 273
-        total_chunks = 10
+        total_chunks = get_product_b_chunk_plan()["chunk_count"]
         total_needed = skip_days + core_days * total_chunks + 92  # +92 for last chunk's Oct-Dec suffix
         print(f"  Product B: {core_days} core days/chunk, {len(date_template)} output days/chunk, {total_chunks} chunks")
         for wba, pcp_data in results.items():
@@ -213,7 +221,7 @@ class CompileWBAPrecipEE:
                 })
                 out_file = os.path.join(pcp_dir, f"{wba}_pcp_n{i+1:02d}.csv")
                 df.to_csv(out_file, header=False, index=False)
-                print(f"    Chunk {i+1:02d}/10: {os.path.basename(out_file)}")
+                print(f"    Chunk {i+1:02d}/{total_chunks}: {os.path.basename(out_file)}")
 
     def write_to_dss(self, results):
         if not self.write_dss_flag:
@@ -244,11 +252,11 @@ class CompileWBAPrecipEE:
 
     def _write_product_b_dss(self, results):
         # Write 10 per-chunk DSS files, Jan 1920 - Dec 2021 each.
-        total_chunks = 10
+        total_chunks = get_product_b_chunk_plan()["chunk_count"]
         start_dt_str = "01JAN1920 24:00"
         for i in range(total_chunks):
             dss_file = os.path.join(self.output_path, f"CS3_DailyPrecipitation_EE_n{i+1:02d}.dss")
-            print(f"  Writing DSS chunk {i+1:02d}/10: {os.path.basename(dss_file)}")
+            print(f"  Writing DSS chunk {i+1:02d}/{total_chunks}: {os.path.basename(dss_file)}")
             with dss_io.open_dss(dss_file, catalog_flag=False) as dss:
                 for wba, pcp_data in results.items():
                     chunk_values = self._build_product_b_chunk(pcp_data.values, i)
@@ -278,7 +286,7 @@ def main():
     ap.add_argument('--clip_period', nargs=2, default=None, help='Optional clip start end (YYYY-MM-DD) [Product A only]')
     ap.add_argument('--no_dss', action='store_true', help='Do not write DSS output')
     ap.add_argument('--product', choices=['A', 'B'], required=True,
-                    help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).')
+                    help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).')
     args = ap.parse_args()
 
     _script_dir = Path(__file__).resolve().parent

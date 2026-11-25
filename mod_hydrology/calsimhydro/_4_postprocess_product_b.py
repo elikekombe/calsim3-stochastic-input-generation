@@ -1,5 +1,5 @@
 """
-Postprocess CalSimHydro Product B (1000-year stochastic) DSS Outputs
+Postprocess CalSimHydro Product B configured stochastic chunks
 ====================================================================
 Extracts monthly time series from the 10 chunked Product B DSS files
 (CS3L2015V0Hydro_SV, RiceOutput, HydroRebalanceSJRdemands) and produces:
@@ -9,7 +9,7 @@ Extracts monthly time series from the 10 chunked Product B DSS files
   4. (--plot) Line plots comparing Product B vs Product A
 
 Each chunk covers 100 water years (1,200 months) using canonical dates
-Oct 1921 - Sep 2021 (WY 1922-2021).
+Each chunk starts at Oct 1921 and spans the configured number of water years.
 
 Inputs
 ------
@@ -49,7 +49,7 @@ import matplotlib.pyplot as plt
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_module_generated_dir, get_inventory_dir
+from utils.paths import get_module_generated_dir, get_inventory_dir, get_product_b_chunk_plan
 
 
 # -- CONSTANTS -----------------------------------------------------------------
@@ -59,10 +59,10 @@ OUTPUT_DIR = _GEN_DIR / "output" / "_4_postprocess_product_b"
 EXCEL_PATH = str(get_inventory_dir() / "_MASTER_INVENTORY_FOR_STOCHASTIC_INPUT_GENERATION_.xlsx")
 SHEET_NAME = "MASTER"
 
-N_CHUNKS = 10          # 10 chunks of 100 water years each
-MONTHS_PER_CHUNK = 1200  # 100 WY x 12 months
+N_CHUNKS = get_product_b_chunk_plan()["chunk_count"]
+MONTHS_PER_CHUNK = get_product_b_chunk_plan()["months_per_chunk"]
 START_WY = 1922
-END_WY = 2021
+END_WY = START_WY - 1 + get_product_b_chunk_plan()["calsim_chunk_years"]
 
 # DSS source definitions
 _cshydro_runs = _GEN_DIR / "CalSimHydro_Runs"
@@ -282,7 +282,7 @@ def _partc_agg_monthly_stats(df, value_col, tag):
 def run_compare_a(source_key, src):
     """Compare Product B chunk monthly statistics against Product A.
 
-    Produces a CSV with columns: Part B, Part C, stat, Month, Product_A, n01, ..., n10.
+    Produces a CSV with columns: Part B, Part C, stat, Month, Product_A, n01 through the configured final chunk.
     Reads the per-chunk data CSVs to compute stats, and reads the
     Product A merged CSV to compute matching stats from the Product_A column.
     """
@@ -359,7 +359,7 @@ def run_compare_a(source_key, src):
 def run_compare_a_partc_agg(source_key, src):
     """Part C aggregation: sum across Part B, then compare B vs A monthly stats.
 
-    Produces a CSV with columns: Part C, stat, Month, Product_A, n01..n10.
+    Produces a CSV with columns: Part C, stat, Month, Product_A, n01 through the configured final chunk.
     """
     print(f"\n{'=' * 60}")
     print(f"  Compare B vs A (Part C agg): {src['label']}")
@@ -556,7 +556,7 @@ def run_source(source_key, src, chunks):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Postprocess CalSimHydro Product B (1000-year stochastic) DSS outputs.",
+        description="Postprocess CalSimHydro Product B configured stochastic chunks.",
     )
     parser.add_argument(
         "--sources", nargs="+",
@@ -593,7 +593,7 @@ def main():
     print(f"Sources: {', '.join(args.sources)}")
     if not args.compare_a and not args.plot:
         print(f"Chunks: {', '.join(f'n{c:02d}' for c in args.chunks)}")
-        print(f"Canonical period: WY {START_WY}-{END_WY} (100 WY per chunk)")
+        print(f"Canonical period: WY {START_WY}-{END_WY} ({END_WY - START_WY + 1} WY per chunk)")
     if args.compare_a:
         print("Mode: Compare Product B vs Product A")
     if args.plot:

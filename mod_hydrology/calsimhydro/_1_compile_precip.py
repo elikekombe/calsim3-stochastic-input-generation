@@ -37,7 +37,7 @@ from pydsstools.core import TimeSeriesContainer
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 
 class compile_wba_precip:
@@ -103,18 +103,23 @@ class compile_wba_precip:
                 raise FileNotFoundError(f"met file not found: {met_path}")
         pcp_wba_daily = pcp_wba_daily / wba_pct_area
         pcp_wba_daily = pcp_wba_daily * 0.0393701  # convert mm to inch
-        pcp_wba_daily.index = self.dates[:len(pcp_wba_daily)]
+        if self.product_b:
+            pcp_wba_daily.index = pd.period_range(start="2025-01-01", periods=len(pcp_wba_daily), freq="D")
+        else:
+            pcp_wba_daily.index = self.dates[:len(pcp_wba_daily)]
         return pcp_wba_daily
 
     def _build_product_b_chunk(self, values, chunk_idx):
         """Build Jan 1920 - Dec 2021 data array for one Product B chunk.
 
-        Core (non-overlapping): Oct 1921 - Sep 2021 (100 water years).
+        Core (non-overlapping): configured number of water years, starting Oct 1921.
         Jan 1921 - Sep 1921: WGEN data preceding this chunk's core.
-        Oct 2021 - Dec 2021: WGEN data following this chunk's core.
+        The next three months: WGEN data following this chunk's core.
         Jan 1920 - Dec 1920: Backfill (duplicate of Jan 1921 - Dec 1921).
         """
-        core_template = pd.date_range('1921-10-01', '2021-09-30', freq='D')
+        chunk_years = get_product_b_chunk_plan()["calsim_chunk_years"]
+        core_end = pd.Timestamp('1921-10-01') + pd.DateOffset(years=chunk_years) - pd.Timedelta(days=1)
+        core_template = pd.date_range('1921-10-01', core_end, freq='D')
         core_days = len(core_template)
         skip_days = 273   # Jan 1 - Sep 30
         pre_core_days = 273
@@ -124,7 +129,7 @@ class compile_wba_precip:
 
         # Jan-Sep before this chunk's Oct
         pre_core = values[core_start - pre_core_days : core_start]
-        # Core: Oct 1921 - Sep 2021 (100 WY)
+        # Core: configured chunk length, starting Oct 1921.
         core = values[core_start : core_start + core_days]
         # Oct-Dec after this chunk's Sep
         post_core = values[core_start + core_days : core_start + core_days + suffix_days]
@@ -146,14 +151,17 @@ class compile_wba_precip:
 
     def _write_product_b_chunks(self, results, pcp_dir):
         # Output Jan 1920 - Dec 2021 per chunk.
-        # Core: Oct 1921 - Sep 2021 (100 WY, non-overlapping across chunks).
+        # Core: configured chunk length, non-overlapping across chunks.
         # Jan 1920 - Dec 1920: backfill (copy of Jan-Dec 1921).
         # Oct 2021 - Dec 2021: from subsequent chunk's WGEN data.
-        date_template = pd.date_range('1920-01-01', '2021-12-31', freq='D')
-        core_template = pd.date_range('1921-10-01', '2021-09-30', freq='D')
+        chunk_years = get_product_b_chunk_plan()["calsim_chunk_years"]
+        core_end = pd.Timestamp('1921-10-01') + pd.DateOffset(years=chunk_years) - pd.Timedelta(days=1)
+        output_end = pd.Timestamp(core_end.year, core_end.month, 1) + pd.DateOffset(months=4) - pd.Timedelta(days=1)
+        date_template = pd.date_range('1920-01-01', output_end, freq='D')
+        core_template = pd.date_range('1921-10-01', core_end, freq='D')
         core_days = len(core_template)
         skip_days = 273
-        total_chunks = 10
+        total_chunks = get_product_b_chunk_plan()["chunk_count"]
         total_needed = skip_days + core_days * total_chunks + 92  # +92 for last chunk's Oct-Dec suffix
         print(f"  Product B: {core_days} core days/chunk, {len(date_template)} output days/chunk, {total_chunks} chunks")
         for wba, pcp_data in results.items():
@@ -170,7 +178,7 @@ class compile_wba_precip:
                 })
                 out_file = os.path.join(pcp_dir, f"{wba}_pcp_n{i+1:02d}.csv")
                 df.to_csv(out_file, header=False, index=False)
-                print(f"    Chunk {i+1:02d}/10: {os.path.basename(out_file)}")
+                print(f"    Chunk {i+1:02d}/{total_chunks}: {os.path.basename(out_file)}")
 
     def run(self, select_wba):
         # Main method to run the compilation for selected wbas
@@ -218,11 +226,11 @@ class compile_wba_precip:
 
     def _write_product_b_dss(self, results):
         # Write 10 per-chunk DSS files, Jan 1920 - Dec 2021 each.
-        total_chunks = 10
+        total_chunks = get_product_b_chunk_plan()["chunk_count"]
         start_dt_str = "01JAN1920 24:00"
         for i in range(total_chunks):
             dss_file = os.path.join(self.output_path, f"CS3_DailyPrecipitation_n{i+1:02d}.dss")
-            print(f"  Writing DSS chunk {i+1:02d}/10: {os.path.basename(dss_file)}")
+            print(f"  Writing DSS chunk {i+1:02d}/{total_chunks}: {os.path.basename(dss_file)}")
             with dss_io.open_dss(dss_file, catalog_flag=False) as dss:
                 for wba, pcp_data in results.items():
                     chunk_values = self._build_product_b_chunk(pcp_data.values, i)
@@ -251,7 +259,7 @@ def main():
     parser.add_argument('--met_sep', type=str, default='\\s+', help='Separator for met files')
     parser.add_argument('--clip_period', type=str, nargs=2, default=None, help='Clip period as start and end date (YYYY-MM-DD) [Product A only]')
     parser.add_argument('--product', choices=['A', 'B'], required=True,
-                        help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).')
+                        help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).')
     args = parser.parse_args()
 
     # Resolve defaults based on product

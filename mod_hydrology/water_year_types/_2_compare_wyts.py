@@ -5,14 +5,14 @@ Provides:
 1. Basic comparison statistics (Product A vs Historical/CDEC)
 2. Detailed mismatch analysis with index values
 3. Visual plots comparing indices over time
-4. CDF comparison of Sac/SJ indices: Historical, Product A, Product B (10 chunks)
+4. CDF comparison of Sac/SJ indices: Historical, Product A, Product B configured chunks
 
 Inputs (auto-resolved via utils.paths):
 - reference/cdec_wyt.txt              -- Historical CDEC WYT index file
 - data/GENERATED/.../water_year_types/output/_1_calc_WYTs/Product_A/_SacWYT.csv
 - data/GENERATED/.../water_year_types/output/_1_calc_WYTs/Product_A/_SJWYT.csv
-- data/GENERATED/.../water_year_types/output/_1_calc_WYTs/Product_B/_SacWYT_n01..n10.csv
-- data/GENERATED/.../water_year_types/output/_1_calc_WYTs/Product_B/_SJWYT_n01..n10.csv
+- data/GENERATED/.../water_year_types/output/_1_calc_WYTs/Product_B/_SacWYT_n{01..N}.csv
+- data/GENERATED/.../water_year_types/output/_1_calc_WYTs/Product_B/_SJWYT_n{01..N}.csv
 
 Outputs:
 - data/GENERATED/.../water_year_types/output/_2_compare_WYTs/wyt_index_comparison.png
@@ -47,7 +47,7 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams['font.size'] = 8
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_module_generated_dir, get_periods
+from utils.paths import get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _wyt_gen = get_module_generated_dir("mod_hydrology/water_year_types")
@@ -57,7 +57,7 @@ INPUT_DIR = _SCRIPT_DIR / 'reference'
 OUTPUT_DIR = _wyt_gen / 'output' / '_2_compare_WYTs'
 PRODUCT_A_DIR = _wyt_gen / 'output' / '_1_calc_WYTs' / 'Product_A'
 PRODUCT_B_DIR = _wyt_gen / 'output' / '_1_calc_WYTs' / 'Product_B'
-N_CHUNKS = 10
+N_CHUNKS = get_product_b_chunk_plan()["chunk_count"]
 
 # WYT Thresholds (MAF)
 SAC_THRESH = {'c': 5.4, 'd': 6.5, 'bn': 7.8, 'an': 9.2}
@@ -397,7 +397,7 @@ def create_cdf_comparison(comparison):
     prod_a_sj_vals = prod_a_sj_df.loc[pa_mask_sj, 'index'].dropna().values
     pa_n = len(prod_a_sac_vals)
 
-    # Product B (10 chunks)
+    # Product B configured chunks
     pb_sac_chunks = []
     pb_sj_chunks = []
     for chunk in range(1, N_CHUNKS + 1):

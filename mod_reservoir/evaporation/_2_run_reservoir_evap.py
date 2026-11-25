@@ -30,7 +30,7 @@ Output (Product A):
     - Validation CSV:       output/_2_run_reservoir_evap/_product_a_validation/_reservoir_evaporation_productA_{start_wy}_{end_wy}.csv
 
 Output (Product B):
-    - Chunk CSVs: output/_2_run_reservoir_evap/_product_b_final/reservoir_evaporation_productB_n01.csv ... n10.csv
+    - Chunk CSVs: output/_2_run_reservoir_evap/_product_b_final/reservoir_evaporation_productB_n{01..N}.csv
     - Format: Part B, Part C, Year, Month, Value (long format)
 
 Output (--compare-a):
@@ -50,7 +50,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_module_generated_dir, get_base_dir, get_periods
+from utils.paths import get_module_generated_dir, get_base_dir, get_periods, get_product_b_chunk_plan
 
 _gen = get_module_generated_dir("mod_reservoir/evaporation")
 
@@ -71,12 +71,11 @@ _MONTH_NAMES = {
 def _load_climate_data_product_b(file_path: str) -> pd.DataFrame:
     """
     Load Product B WGEN climate data using a PeriodIndex - consistent with all
-    other project scripts that handle the 1000-year stochastic sequence.
+    other project scripts that handle the configured stochastic period.
 
-    Product B WGEN files use years 1-1008 (below pandas Timestamp min ~1677),
-    so date construction into a DatetimeIndex fails.  A daily PeriodIndex
-    anchored at 2025-01-01 (368,172 periods) spans the full 1000-year sequence
-    and is compatible with pandas resample() for monthly aggregation.
+    Product B WGEN files use synthetic year numbers that may be below pandas'
+    Timestamp range, so date construction into a DatetimeIndex can fail. A
+    daily PeriodIndex uses the actual input length and supports monthly resampling.
     """
     data = np.loadtxt(file_path)
     dates = pd.period_range(start='2025-01-01', periods=len(data), freq='D')
@@ -419,16 +418,16 @@ def create_product_b_chunk_outputs(
     output_dir: str = 'output/_2_run_reservoir_evap/_product_b_final'
 ):
     """
-    Write Product B evaporation into 10 long-format chunk CSVs (100 WYs each).
+    Write Product B evaporation into one long-format CSV per configured chunk.
     Skips first 9 months (Jan-Sep of synthetic year 1) to align to Oct WY start.
-    Template dates: Oct 1921 - Sep 2021 (WY1922-WY2021).
+    Template dates: configured chunk length, anchored at Oct 1921.
     Output format columns: Part B, Part C, Year, Month, Value
     """
     if not results:
         return
-    months_per_chunk = 1200   # 100 WYs x 12 months
+    months_per_chunk = get_product_b_chunk_plan()["months_per_chunk"]
     skip_months = 9            # Jan-Sep of synthetic year 1
-    total_chunks = 10
+    total_chunks = get_product_b_chunk_plan()["chunk_count"]
     total_needed = skip_months + months_per_chunk * total_chunks
 
     date_template = pd.date_range('1921-10-31', periods=months_per_chunk, freq='ME')
@@ -987,9 +986,9 @@ def compare_product_b_with_a(
 
     Reads pre-generated outputs from disk:
       - Product A: combined_evaporation.csv (wide format, date x reservoir)
-      - Product B: reservoir_evaporation_productB_n01.csv ... n10.csv (long format)
+      - Product B: reservoir_evaporation_productB_n{01..N}.csv (long format)
 
-    Outputs two comparison tables (columns: ProductA, n01, n02, ..., n10):
+    Outputs two comparison tables (columns: ProductA and one column per configured chunk):
       - comparison_monthly_aggregated.csv
           Monthly mean evaporation averaged across ALL reservoirs.
           Rows: month (1-12).
@@ -1143,7 +1142,7 @@ def main():
                     '(or compare Product B output to Product A baseline).')
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--product', choices=['A', 'B'],
-                       help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).')
+                       help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).')
     group.add_argument('--compare-a', action='store_true',
                        help='Compare existing Product B outputs against the Product A baseline (no new run).')
     parser.add_argument('reservoirs', nargs='*',

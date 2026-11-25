@@ -6,7 +6,7 @@
     "sacsma_env": "sacsma",
     "sacsma_commit": "1443ae0e616df71d1ae77029f8092e7f7ed90c78",
     "periods": {
-        "_comment": "Product A periods are separated by purpose so changing one does not change another.",
+        "_comment": "Product A periods are separated by purpose. Product B lengths control stochastic simulation and chunking.",
         "product_a": {
             "wind_input": {
                 "start_date": "1915-01-01",
@@ -81,6 +81,11 @@
                 "start_date": "1915-10-01",
                 "end_date": "2018-09-30"
             }
+        },
+        "product_b": {
+            "_comment": "Product B lengths are in years. Any trailing years that do not fill a complete CalSim chunk are discarded at the end.",
+            "wgen_simulation_years": 1000,
+            "calsim_chunk_years": 100
         }
     }
 }

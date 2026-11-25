@@ -20,7 +20,7 @@ Thresholds (annual unimpaired Folsom flow, TAF):
 Products:
   - Product A (historical-length, WY 1972-2018): Uses FOLSM_INFLOW from the
     Product A QMap validation output (calsim_qmap_validation_TS.csv).
-  - Product B (1000-yr stochastic, 10 chunks): Uses synthetic FOLSM_INFLOW
+  - Product B: Uses configured stochastic chunks of synthetic FOLSM_INFLOW
     from _10_RimInflow QMap output with the same thresholds applied directly.
 
 Input files (in ./reference/):
@@ -30,13 +30,13 @@ External dependencies:
   - rim_inflow/output/_2_qmap_historical_validation/
        calsim_qmap_validation_TS.csv  (Product A FOLSM_INFLOW)
   - rim_inflow/output/_3_qmap_product_b/
-       FOLSM_INFLOW_qmo_n01.csv ... n10.csv  (Product B inflows)
+       FOLSM_INFLOW_qmo_n{01..N}.csv  (configured Product B chunks)
 
 Output:
   - output/_product_a_validation/
        _pge_wy_allocation_productA_1972_2018.csv
   - output/_product_b_final/
-       _pge_wy_allocation_productB_n01.csv  ...  _pge_wy_allocation_productB_n10.csv
+       _pge_wy_allocation_productB_n{01..N}.csv  (one per configured chunk)
 
 Usage
 -----
@@ -54,7 +54,7 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_module_generated_dir, get_periods
+from utils.paths import get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 # ------------------------------------------------------------------------------
 # Configuration
@@ -66,8 +66,8 @@ _PRODUCT_A_VALIDATION = get_periods("product_a")["validation"]
 PRODUCT_A_START_WY = _PRODUCT_A_VALIDATION["start_water_year"]
 PRODUCT_A_END_WY = _PRODUCT_A_VALIDATION["end_water_year"]
 
-# Product B: number of chunks
-PRODUCT_B_NCHUNKS = 10
+# Product B: number of complete chunks from the shared configuration
+PRODUCT_B_NCHUNKS = get_product_b_chunk_plan()["chunk_count"]
 
 # Input paths (relative to this script)
 REFERENCE_DIR = RUN_DIR / "reference"
@@ -382,7 +382,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="PGE_WY_ALLOCATION_SV reconstruction from FOLSM_INFLOW thresholds.")
     ap.add_argument("--product", choices=["A", "B"], required=True,
-                    help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).')
+                    help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).')
     args = ap.parse_args()
 
     print("PGE_WY_ALLOCATION_SV Reconstruction")

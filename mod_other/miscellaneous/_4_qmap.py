@@ -13,7 +13,7 @@ For each (target, predictor) pair in ``reference/qmap_pairs.csv``:
 
 - Training (1921-1971 for A; 1921-2021 for B) uses CalSim baseline DSS for
   both basis and target.
-- Simulation (A: 1972-2018; B: 10 chunks of 100 WY each) maps the matched
+- Simulation (A: 1972-2018; B: configured full-year chunks) maps the matched
   rim-inflow predictor onto the target domain.
 
 Currently maps TULE_WET_INDX from I_PEDRO inflow (see qmap_pairs.csv).
@@ -73,7 +73,7 @@ def _write_product_b_final(out_dir: Path, final_dir: Path, pair_csv: Path,
                            sim_in_dir: Path) -> None:
     """Reformat per-chunk detail CSVs into final CalSim Part B/C/Year/Month/Value CSVs.
 
-    Each target gets one CSV per chunk (n01-n10), named
+    Each target gets one CSV per configured chunk (n01 through nN), named
     ``<target_part_b>_productB_<ts>.csv``.
     """
     final_dir.mkdir(parents=True, exist_ok=True)

@@ -57,7 +57,21 @@ def _load_config() -> dict:
         cfg = json.load(f)
     if _USER_CFG.exists():
         with open(_USER_CFG, "r") as f:
-            cfg.update(json.load(f))
+            user_cfg = json.load(f)
+        default_periods = cfg.get("periods", {})
+        user_periods = user_cfg.get("periods", {})
+        cfg.update(user_cfg)
+        if isinstance(default_periods, dict) and isinstance(user_periods, dict):
+            merged_periods = dict(default_periods)
+            for product, product_values in user_periods.items():
+                if (isinstance(merged_periods.get(product), dict)
+                        and isinstance(product_values, dict)):
+                    merged_product = dict(merged_periods[product])
+                    merged_product.update(product_values)
+                    merged_periods[product] = merged_product
+                else:
+                    merged_periods[product] = product_values
+            cfg["periods"] = merged_periods
     return cfg
 
 
@@ -78,15 +92,54 @@ def get_data_dir() -> Path:
 
 
 def get_periods(product: str) -> dict:
-    """Return configured date periods for a product.
+    """Return configured periods for a product.
 
     I keep these dates in the config so users can adjust run periods without
     editing dates in multiple pipeline scripts.
     """
     periods = _CFG.get("periods", {})
     if product not in periods:
-        raise KeyError(f"No date periods are configured for {product!r}.")
+        raise KeyError(f"No periods are configured for {product!r}.")
     return periods[product]
+
+
+def get_product_b_chunk_plan() -> dict:
+    """Return Product B simulation/chunk lengths and the retained full chunks.
+
+    Product B lengths are configured in years. A trailing remainder that does
+    not fill a complete CalSim chunk is excluded from the usable simulation.
+    """
+    product_b = get_periods("product_b")
+    raw_total_years = product_b["wgen_simulation_years"]
+    raw_chunk_years = product_b["calsim_chunk_years"]
+    if (isinstance(raw_total_years, bool) or not isinstance(raw_total_years, int)
+            or isinstance(raw_chunk_years, bool) or not isinstance(raw_chunk_years, int)):
+        raise ValueError(
+            "Product B simulation and chunk lengths must be configured as whole-number years."
+        )
+    total_years = raw_total_years
+    chunk_years = raw_chunk_years
+    if total_years <= 0 or chunk_years <= 0:
+        raise ValueError("Product B simulation and chunk lengths must be positive integers.")
+
+    chunk_count = total_years // chunk_years
+    if chunk_count < 1:
+        raise ValueError(
+            "Product B WGEN simulation length must be at least one CalSim chunk "
+            f"({total_years} years configured, {chunk_years} years per chunk)."
+        )
+
+    usable_years = chunk_count * chunk_years
+    discarded_years = total_years - usable_years
+    return {
+        "wgen_simulation_years": total_years,
+        "calsim_chunk_years": chunk_years,
+        "chunk_count": chunk_count,
+        "usable_years": usable_years,
+        "discarded_years": discarded_years,
+        "months_per_chunk": chunk_years * 12,
+        "discarded_months": discarded_years * 12,
+    }
 
 
 def get_base_dir() -> Path:

@@ -1,9 +1,9 @@
 """
-Compile Product B (1000-year stochastic) SV CSVs and DSS
+Compile Product B (configured stochastic period) SV CSVs and DSS
 ========================================================
-Consolidates every module's per-chunk ``_product_b_final/*.csv`` into ten
-unified ``ProductB_SV_n{01..10}.csv`` files and writes the corresponding
-``ProductB_SV_n{01..10}.dss`` files by overlaying chunk values onto the
+Consolidates every module's per-chunk ``_product_b_final/*.csv`` into the
+configured set of unified ``ProductB_SV_n{01..N}.csv`` files and writes the
+corresponding DSS files by overlaying chunk values onto the
 CalSim baseline DSS template. Auto-fills inventory Constant/Rept SVs from
 the baseline 12-month pattern and runs a CalSim baseline diagnostic
 comparison.
@@ -22,7 +22,7 @@ Inputs
 Outputs (all written to ``product_b_compilation/``)
 ---------------------------------------------------
 - ``compiled_input_files/<module>/*.csv`` -- local copies of source CSVs
-- ``_product_b_compiled_sv/ProductB_SV_n{01..10}.csv`` (+ matching .dss)
+- ``_product_b_compiled_sv/ProductB_SV_n{01..N}.csv`` (+ matching .dss)
 - ``inventory_*`` cross-reference CSVs (expected/missing/constant_rept/
   skipped_missing/skipped_not_in_dcr/unexpected)
 - ``sv_coverage_by_chunk.csv``
@@ -50,7 +50,7 @@ CLI flags
 ---------
 - ``--skip-comparison`` Skip the CalSim baseline comparison step.
 - ``--skip-dss``        Skip DSS file generation (CSV only).
-- ``--chunks N [N ...]`` Process only specific chunks (default: all 10).
+- ``--chunks N [N ...]`` Process only specific chunks (default: all configured chunks).
 - ``--summary-figures`` Regenerate figures from a previous comparison CSV.
 
 Note: this script runs procedurally at module load (no ``main()`` wrapper).
@@ -73,7 +73,7 @@ from collections import OrderedDict
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_generated_dir, get_module_generated_dir, get_inventory_dir
+from utils.paths import get_base_dir, get_generated_dir, get_module_generated_dir, get_inventory_dir, get_product_b_chunk_plan
 
 warnings.filterwarnings("ignore", message="Mean of empty slice")
 warnings.filterwarnings("ignore", message="All-NaN slice encountered")
@@ -94,15 +94,19 @@ INVENTORY_XLSX = get_inventory_dir() / "_MASTER_INVENTORY_FOR_STOCHASTIC_INPUT_G
 
 DSS_PATTERN = "/*/*/*/*/1MON/*"
 
-# Product B canonical period: 100 WY per chunk  (Oct 1921 - Sep 2021)
-N_CHUNKS     = 10
+# Product B period: configured water years per chunk, anchored at Oct 1921.
+N_CHUNKS     = get_product_b_chunk_plan()["chunk_count"]
 CHUNK_TAGS   = [f"n{i:02d}" for i in range(1, N_CHUNKS + 1)]
 PB_START_YM  = (1921, 10)   # first data month
-PB_END_YM    = (2021,  9)   # last data month
+PB_END_YM    = (1921 + get_product_b_chunk_plan()["calsim_chunk_years"], 9)   # last data month
 
-# CalSim baseline comparison window (full period, WY 1922-2021)
+# CalSim baseline comparison window. The 100-year source baseline ends in WY2021;
+# longer Product B chunks are compared over this shared historical overlap.
 CB_START = pd.Timestamp(1921, 10, 31)
-CB_END   = pd.Timestamp(2021,  9, 30)
+_CONFIGURED_CHUNK_END = pd.Timestamp(
+    1921 + get_product_b_chunk_plan()["calsim_chunk_years"], 9, 30
+)
+CB_END = min(_CONFIGURED_CHUNK_END, pd.Timestamp(2021, 9, 30))
 
 
 # Junction lifecycle (mklink /J + Windows long-path handling) lives in
@@ -112,7 +116,7 @@ CB_END   = pd.Timestamp(2021,  9, 30)
 
 # -- CLI arguments ---------------------------------------------------------
 _parser = argparse.ArgumentParser(
-    description="Product B (1000-year stochastic) -- CSV Compilation",
+    description="Product B (configured stochastic period) -- CSV Compilation",
 )
 _parser.add_argument(
     "--skip-comparison", action="store_true", default=False,
@@ -273,15 +277,15 @@ def _inventory_partc_map() -> dict:
 # Step 0: Detect chunk tag from filename
 # ======================================================================
 def detect_chunk_tag(filename: str) -> str:
-    """Extract chunk tag (n01-n10) from a CSV filename.
+    """Extract a configured chunk tag (n01, n02, ... ) from a CSV filename.
 
     Tries several patterns used across modules.
     Returns empty string if no chunk tag found.
     """
     import re
     name = filename.lower()
-    # Match _n01, _n02 .. _n10
-    m = re.search(r'_n(\d{2})(?:\.|_|$)', name)
+    # Match chunk labels with any number of digits (n01, n10, n100, ...).
+    m = re.search(r'_n(\d+)(?:\.|_|$)', name)
     if m:
         num = int(m.group(1))
         if 1 <= num <= N_CHUNKS:
@@ -410,10 +414,10 @@ def _extract_wy_pattern(ser_clean):
 
 
 def build_constant_rept_rows(dss_in, baseline_bucket, part_key):
-    """Build 100 WY of constant/rept values from the baseline pattern.
+    """Build one configured chunk of constant/rept values from the baseline pattern.
 
     Returns a DataFrame with Part B, Part C, Year, Month, Value
-    covering Oct 1921 - Sep 2021 (1200 months).
+    covering the configured chunk window (Oct 1921 onward).
     """
     if part_key not in baseline_bucket:
         return pd.DataFrame()
@@ -1037,7 +1041,7 @@ def _generate_comparison_figures(cmp_df, fig_dir, ref_label, active_tags,
         return _annual_values_from_monthly_df(df_monthly, unit)
 
     def _build_pb_annual_lookup():
-        """Returns {pk: np.array} -- pooled 1000-year annual values (all chunks)."""
+        """Returns {pk: np.array} -- pooled annual values across configured chunks."""
         lookup = {}
         if not compiled_chunks:
             return lookup
@@ -1671,7 +1675,7 @@ def _generate_comparison_figures(cmp_df, fig_dir, ref_label, active_tags,
 # MAIN EXECUTION
 # ======================================================================
 print("=" * 72)
-print("  Product B (1000-year stochastic) -- CSV Compilation")
+print("  Product B (configured stochastic period) -- CSV Compilation")
 print("=" * 72)
 
 if not BASELINE_DSS.exists():
@@ -1972,9 +1976,9 @@ for chunk_idx in ACTIVE_CHUNKS:
 
     compiled = pd.concat(frames, ignore_index=True)
 
-    # Trim to canonical Product B window (Oct 1921 - Sep 2021)
+    # Keep only the configured Product B chunk window.
     ym = compiled["Year"] * 100 + compiled["Month"]
-    compiled = compiled[(ym >= 192110) & (ym <= 202109)].copy()
+    compiled = compiled[(ym >= PB_START_YM[0] * 100 + PB_START_YM[1]) & (ym <= PB_END_YM[0] * 100 + PB_END_YM[1])].copy()
 
     # De-duplicate: keep last occurrence for each (Part B, Part C, Year, Month)
     compiled = compiled.drop_duplicates(
@@ -1999,9 +2003,9 @@ for chunk_idx in ACTIVE_CHUNKS:
     # Per-SV month counts for this chunk
     sv_counts = compiled.groupby(["Part B", "Part C"]).size()
     chunk_sv_month_counts[tag] = sv_counts
-    wrong_months = sv_counts[sv_counts != 1200]
+    wrong_months = sv_counts[sv_counts != get_product_b_chunk_plan()["months_per_chunk"]]
     if not wrong_months.empty:
-        print(f"  {tag}: WARNING -- {len(wrong_months)} SVs with != 1200 months:")
+        print(f"  {tag}: WARNING -- {len(wrong_months)} SVs with an unexpected month count:")
         for (b, c), cnt in wrong_months.items():
             print(f"    {b} / {c}: {cnt} months")
 
@@ -2220,12 +2224,12 @@ fp = OUTPUT_DIR / "sv_coverage_by_chunk.csv"
 coverage_df.to_csv(fp, index=False)
 incomplete = coverage_df[~coverage_df.get("All_Chunks", True)].shape[0]
 non_uniform = int((~coverage_df.get("Months_Uniform", pd.Series([True]*len(coverage_df)))).sum())
-not_1200 = int((coverage_df.get("Min_Months", pd.Series([1200]*len(coverage_df))) != 1200).sum())
+not_expected_months = int((coverage_df.get("Min_Months", pd.Series([get_product_b_chunk_plan()["months_per_chunk"]]*len(coverage_df))) != get_product_b_chunk_plan()["months_per_chunk"]).sum())
 print(f"  {fp.name:45s}  {len(coverage_df):>6,} SVs")
 if incomplete > 0:
     print(f"  WARNING: {incomplete} SVs are missing from at least one chunk!")
-if not_1200 > 0:
-    print(f"  WARNING: {not_1200} SVs have != 1200 months in at least one chunk!")
+if not_expected_months > 0:
+    print(f"  WARNING: {not_expected_months} SVs do not match the configured chunk length!")
 if non_uniform > 0:
     print(f"  WARNING: {non_uniform} SVs have different month counts across chunks!")
 print()
@@ -2334,7 +2338,7 @@ if not CLI_ARGS.skip_comparison:
 
     # -- CalSim baseline comparison (full 1921-2021) --
     print()
-    print("  Comparing against CalSim baseline (WY 1922-2021) ...")
+    print("  Comparing against the shared CalSim baseline period (through WY2021) ...")
     cb_means = read_calsim_base_monthly_means(
         baseline_bucket, all_compiled_svs, CB_START, CB_END
     )
@@ -2345,7 +2349,8 @@ if not CLI_ARGS.skip_comparison:
 
     pb_means_cb = _compute_pb_chunk_means(
         compiled_chunks, ACTIVE_TAGS,
-        start_ym=192110, end_ym=202109,
+        start_ym=CB_START.year * 100 + CB_START.month,
+        end_ym=CB_END.year * 100 + CB_END.month,
     )
 
     cmp_b = _build_comparison_df(
@@ -2387,7 +2392,7 @@ n_total_svs = len(all_compiled_svs)
 
 lines = [
     "=" * 65,
-    "  Product B (1000-year) -- Compilation Summary",
+    "  Product B (configured years) -- Compilation Summary",
     "=" * 65,
     "",
     f"  Baseline DSS:  {BASELINE_DSS.name}",

@@ -60,7 +60,7 @@ INPUTS / OUTPUTS
     Quantile-mapped UNIMP_OROV (WY 1972-2018).  Leading months that predate
     the first classifiable cycle are filled from the baseline MINFLOWFEATHER.
 
-  Product B  <-  rim-inflow Product B chunks  UNIMP_OROV_qmo_n01..n10.csv
+  Product B  <-  rim-inflow Product B chunks  UNIMP_OROV_qmo_n{01..N}.csv
     Quantile-mapped UNIMP_OROV; the WY-1921 rolling-average seed comes from
     the CalSim SV DSS.
 
@@ -85,13 +85,13 @@ INPUTS / OUTPUTS
     Written to:
       output/_product_a_validation/_minflowfeather_productA_1972_2018.csv
 
-  Output 3 - Product B (10 chunks, WY 1922-2021 each)
+  Output 3 - Product B (configured chunks, each starting at WY1922)
     Classifies with each chunk's own qmap_postAdj data plus CS3 WY 1921 seed
     for 2-year rolling average priming.
     Written to:
       output/_product_b_final/_minflowfeather_productB_qmo_n01.csv
       output/_product_b_final/_minflowfeather_productB_qmo_n02.csv
-      ... through n10.csv
+      ... through the configured final chunk
 
 Reference:
   Feather River Levee Repair Project, Draft EIR - DWR / TRLIA
@@ -112,7 +112,7 @@ import numpy as np
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 from utils import dss_io
 
 # -----------------------------------------------------------------------------
@@ -154,7 +154,7 @@ OUT_VALIDATION = OUT_DIR / "_minflowfeather_validation_1922_2021.csv"
 OUT_PRODUCT_A_DIR = _gen / "output" / "_product_a_validation"
 OUT_PRODUCT_A = OUT_PRODUCT_A_DIR / f"_minflowfeather_productA_{PRODUCT_A_VALIDATION['start_water_year']}_{PRODUCT_A_VALIDATION['end_water_year']}.csv"
 
-# Output 3: Product B - one file per chunk (n01 ... n10)
+# Output 3: Product B - one file per configured chunk
 OUT_PRODUCT_B_DIR = _gen / "output" / "_product_b_final"
 OUT_PRODUCT_B_PATTERN = str(OUT_PRODUCT_B_DIR / "_minflowfeather_productB_qmo_n{:02d}.csv")
 
@@ -421,7 +421,7 @@ def _schedule_summary_from_series(unimp_orov: pd.Series) -> dict:
 def _load_product_b_chunk(chunk_num: int) -> pd.Series:
     """
     Load a single Product B UNIMP_OROV chunk (qmap_postAdj column, TAF).
-    Files now carry historical-epoch dates (Oct 1921 - Sep 2021, 1200 rows).
+    Files carry historical-epoch dates for the configured chunk length, anchored at Oct 1921.
     """
     path = os.path.join(
         PATH_UNIMP_OROV_PB_DIR,
@@ -541,17 +541,17 @@ def run_product_a():
 
 
 def run_product_b():
-    """Output 3: Product B - 10 chunks, WY 1922-2021 each."""
+    """Output 3: Product B - one file per configured chunk."""
     os.makedirs(OUT_PRODUCT_B_DIR, exist_ok=True)
     print("\n" + "-" * 65)
-    print("OUTPUT 3 - Product B  (10 chunks, WY 1922-2021)")
+    print(f"OUTPUT 3 - Product B  ({get_product_b_chunk_plan()['chunk_count']} configured chunks)")
     print("-" * 65)
 
     # CS3 WY 1921 seed (Oct 1920 - Sep 1921) for 2-year rolling avg priming.
     unimp_hist = _read_dss(UNIMP_OROV_KEY)[UNIMP_OROV_KEY]
     _cs3_seed  = unimp_hist.loc['1920-10-31':'1921-09-30'].copy()
 
-    for n in range(1, 11):
+    for n in range(1, get_product_b_chunk_plan()["chunk_count"] + 1):
         pb_path = os.path.join(
             PATH_UNIMP_OROV_PB_DIR,
             f'UNIMP_OROV_qmo_n{n:02d}.csv'

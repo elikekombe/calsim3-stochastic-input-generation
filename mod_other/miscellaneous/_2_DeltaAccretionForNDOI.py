@@ -30,9 +30,9 @@ Outputs
         _deltaaccretionforndoi_productA_1922_2018.csv
 
     output/_product_b_final/
-        _deltaaccretionforndoi_productB_1922_2021_qmo_n01.csv
+    _deltaaccretionforndoi_productB_1922_2021_qmo_n01.csv (default settings)
         ...
-        _deltaaccretionforndoi_productB_1922_2021_qmo_n10.csv
+        _deltaaccretionforndoi_productB_1922_2021_qmo_n10.csv (default settings)
 
 CSV format: Part B, Part C, Year, Month, Value
 
@@ -54,7 +54,8 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import (get_base_dir, get_module_generated_dir, get_periods,
+                         get_product_b_chunk_plan)
 
 # -- Constants ----------------------------------------------------------------
 TARGET_LAT   = 38.00      # Stockton Fire Station No. 4 latitude (degN)
@@ -198,7 +199,7 @@ def run_product_a():
 
 
 def run_product_b():
-    """Process Product B: WGEN 1000-year stochastic, fixed area ratio."""
+    """Process Product B using configured WGEN and CalSim chunk lengths."""
     os.makedirs(OUTPUT_B_DIR, exist_ok=True)
 
     print('\n' + '=' * 72)
@@ -229,11 +230,12 @@ def run_product_b():
     # Plain integer-indexed Series for chunking
     monthly_b = pd.Series(taf_b_vals)
 
-    # --- Chunk into 10 x 100 water years ----------------------------------------
-    MONTHS_PER_CHUNK = 100 * 12   # 1200
-    TOTAL_CHUNKS     = 10
+    # --- Split into complete chunks from the shared Product B settings ----------
+    chunk_plan = get_product_b_chunk_plan()
+    MONTHS_PER_CHUNK = chunk_plan['months_per_chunk']
+    TOTAL_CHUNKS     = chunk_plan['chunk_count']
     SKIP_MONTHS      = 9          # skip Jan-Sep of synthetic year 1 (align to Oct)
-    TOTAL_NEEDED     = SKIP_MONTHS + MONTHS_PER_CHUNK * TOTAL_CHUNKS  # 12009
+    TOTAL_NEEDED     = SKIP_MONTHS + MONTHS_PER_CHUNK * TOTAL_CHUNKS
 
     if len(monthly_b) < TOTAL_NEEDED:
         raise ValueError(
@@ -242,9 +244,9 @@ def run_product_b():
 
     aligned_b = monthly_b.iloc[SKIP_MONTHS:].values
 
-    # Build WY date template: WY 1922-2021  (Oct 1921 - Sep 2021), 1200 rows
+    # Build a date template for one configured chunk, starting Oct 1921.
     wy_years, wy_months = [], []
-    for wy in range(1922, 2022):           # WY 1922 ... WY 2021
+    for wy in range(1922, 1922 + chunk_plan['calsim_chunk_years']):
         for m in [10, 11, 12]:            # Oct-Dec of prior calendar year
             wy_years.append(wy - 1)
             wy_months.append(m)
@@ -254,8 +256,14 @@ def run_product_b():
     wy_years  = np.array(wy_years)
     wy_months = np.array(wy_months)
 
-    print(f'  Writing {TOTAL_CHUNKS} chunks x {MONTHS_PER_CHUNK // 12} water years...')
-    base_name = '_deltaaccretionforndoi_productB_1922_2021'
+    print(f'  Writing {TOTAL_CHUNKS} chunks x {chunk_plan["calsim_chunk_years"]} water years...')
+    if chunk_plan['discarded_years']:
+        print(f'  Dropping {chunk_plan["discarded_years"]} trailing WGEN years '
+              f'({chunk_plan["discarded_months"]} months).')
+    base_name = (
+        f'_deltaaccretionforndoi_productB_1922_'
+        f'{1921 + chunk_plan["calsim_chunk_years"]}'
+    )
 
     for i in range(TOTAL_CHUNKS):
         start    = i * MONTHS_PER_CHUNK
@@ -270,7 +278,7 @@ def run_product_b():
         fname = f'{base_name}_qmo_n{i + 1:02d}.csv'
         fpath = os.path.join(OUTPUT_B_DIR, fname)
         chunk_df.to_csv(fpath, index=False)
-        print(f'    Chunk {i + 1:02d}/10 -> {fname}')
+        print(f'    Chunk {i + 1:02d}/{TOTAL_CHUNKS} -> {fname}')
 
     print('\nProduct B stats:')
     print(f'  Value range: [{aligned_b[:MONTHS_PER_CHUNK * TOTAL_CHUNKS].min():.3f}, '
@@ -288,7 +296,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--product', choices=['A', 'B'], required=True,
-        help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).'
+        help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).'
     )
     args = parser.parse_args()
 

@@ -6,7 +6,7 @@ PP point locations specified in reference/pp_point_locations.csv.
 Finds the nearest VIC grid cell for each lat/lon and aggregates daily -> monthly.
 
 Product A: one CSV per location.
-Product B: 10 long-format chunk CSVs (100 WY each, Oct 1921 - Sep 2021).
+Product B: one long-format output per configured full chunk, anchored at Oct 1921.
 
 Inputs
 ------
@@ -17,7 +17,7 @@ Outputs
 -------
 - output/_1_pp_point_locations/product_a/<location>_monthly_precip.csv
 - output/_product_a_validation/_pp_precip_productA_{start_wy}_{end_wy}.csv
-- output/_product_b_final/_pp_precip_productB_n01.csv ... n10.csv
+- output/_product_b_final/_pp_precip_productB_n{01..N}.csv
 - output/_1_pp_point_locations/{source}/_summary.csv
 
 Usage
@@ -38,7 +38,7 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 
 def find_nearest_grid_cell(target_lat, target_lon, data_folder):
@@ -293,15 +293,15 @@ def write_product_a_validation(summaries, output_folder, start_wy=None, end_wy=N
 
 def write_product_b_chunks(summaries: list, output_folder):
     """
-    Compile all locations into 10 long-format chunk CSVs (100 WYs each).
+    Compile all locations into one long-format CSV per configured chunk.
     Skips first 9 months (Jan-Sep synthetic year 1) for WY alignment.
-    Template dates: Oct 1921 - Sep 2021 (WY1922-2021).
-    Output: _pp_precip_productB_n01.csv ... _pp_precip_productB_n10.csv
+    Template dates: configured chunk length, anchored at Oct 1921.
+    Output: _pp_precip_productB_n{01..N}.csv (configured chunk count).
     Format: Part B, Part C, Year, Month, Value
     """
     skip_months      = 9     # Jan-Sep of synthetic year 1
-    months_per_chunk = 1200  # 100 WYs x 12 months
-    total_chunks     = 10
+    months_per_chunk = get_product_b_chunk_plan()["months_per_chunk"]
+    total_chunks     = get_product_b_chunk_plan()["chunk_count"]
     total_needed     = skip_months + months_per_chunk * total_chunks
 
     date_template = pd.date_range('1921-10-31', periods=months_per_chunk, freq='ME')

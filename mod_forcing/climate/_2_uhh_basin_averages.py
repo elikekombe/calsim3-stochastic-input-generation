@@ -7,7 +7,7 @@ Grid cell weights are read from mod_forcing/vic/reference/GridInfo/ files.
 VPD is derived via quantile mapping from temperature using CalSim historical VPD.
 
 Product A / Historical: one CSV per variable per location.
-Product B: 10 long-format chunk CSVs per variable (100 WY each, Oct 1921 - Sep 2021).
+Product B: one long-format CSV per variable and configured full chunk, anchored at Oct 1921.
 
 Inputs
 ------
@@ -22,7 +22,7 @@ Outputs
 - output/_2_uhh_basin_averages/product_a/T<name>_UHH.csv
 - output/_2_uhh_basin_averages/product_a/VPD<name>_UHH.csv
 - output/_product_a_validation/_uhh_{precip,temperature,vpd}_productA_{start_wy}_{end_wy}.csv
-- output/_product_b_final/_uhh_precip_productB_n01.csv ... n10.csv  (same pattern for temp/vpd)
+- output/_product_b_final/_uhh_precip_productB_n{01..N}.csv  (same pattern for temp/vpd)
 
 Usage
 -----
@@ -48,7 +48,7 @@ from matplotlib.patches import Patch
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 from utils.quantile_mapping import qmap_single
 
 
@@ -355,8 +355,11 @@ def apply_vpd_quantile_mapping(temp_monthly, target_vpd, source_type):
         # and target, so only the month labels need to be correct -- years are
         # irrelevant.  Product B months are already correct calendar months from
         # the PeriodIndex, so we use them directly (no label overwriting).
-        # Use up to 1200 months (~100 WY), truncated to whichever series is shorter.
-        n_calib = min(len(temp_basis_sim), len(target_vpd), 1200)
+        # Use at most one configured chunk for the Product B monthly mapping.
+        n_calib = min(
+            len(temp_basis_sim), len(target_vpd),
+            get_product_b_chunk_plan()["months_per_chunk"],
+        )
         basis_hist_temp = temp_basis_sim.iloc[:n_calib].copy().reset_index(drop=True)
         target_hist_vpd = target_vpd.iloc[:n_calib].copy().reset_index(drop=True)
     else:
@@ -1237,17 +1240,17 @@ def write_product_a_validation(summaries, output_folder, start_wy=None, end_wy=N
 
 def write_product_b_chunks(summaries: list, output_folder):
     """
-    Compile all locations into 10 long-format chunk CSVs (100 WYs each).
+    Compile all locations into one long-format CSV per configured chunk.
     Skips first 9 months (Jan-Sep synthetic year 1) for WY alignment.
-    Template dates: Oct 1921 - Sep 2021 (WY1922-2021).
-    Writes three file sets: _uhh_precip_productB_n01..n10.csv,
-                            _uhh_temperature_productB_n01..n10.csv,
-                            _uhh_vpd_productB_n01..n10.csv
+    Template dates: configured chunk length, anchored at Oct 1921.
+    Writes three file sets with one output per configured chunk:
+                            _uhh_temperature_productB_n{01..N}.csv,
+                            _uhh_vpd_productB_n{01..N}.csv
     Format: Part B, Part C, Year, Month, Value
     """
     skip_months     = 9     # Jan-Sep of synthetic year 1
-    months_per_chunk = 1200 # 100 WYs x 12 months
-    total_chunks    = 10
+    months_per_chunk = get_product_b_chunk_plan()["months_per_chunk"]
+    total_chunks    = get_product_b_chunk_plan()["chunk_count"]
     total_needed    = skip_months + months_per_chunk * total_chunks
 
     date_template = pd.date_range('1921-10-31', periods=months_per_chunk, freq='ME')
@@ -1444,7 +1447,7 @@ def _plot_hist_vs_productB_box(
     unit: str = "inches",
     productA_wy: pd.DataFrame = None,
 ):
-    """Create boxplot: historical (+ Product A) + n01..n10 annual WY precip totals.
+    """Create boxplot: historical (+ Product A) + configured Product B chunk annual WY precip totals.
 
     When ``productA_wy`` is provided (and non-empty), a Product A box is drawn
     between the historical box and the Product B blocks.
@@ -1550,7 +1553,7 @@ def _plot_hist_vs_productB_box(
 
 
 def run_compare_historical_productB(args):
-    """Compare historical annual WY precip vs Product A and Product B (n01-n10) boxplots.
+    """Compare historical annual WY precip vs Product A and Product B chunk boxplots.
 
     The Product A box (single historical-length realization) is included when the
     Product A validation CSV (output/_product_a_validation/_uhh_precip_productA_*.csv)
@@ -1786,7 +1789,7 @@ def parse_arguments():
         action='store_true',
         dest='compare_historical_productB',
         help='Compare historical annual WY precipitation against Product A and Product B '
-             '(n01-n10) boxplots. The Product A box is included when its validation CSV is '
+             '(one box per configured chunk). The Product A box is included when its validation CSV is '
              'available. Generates one figure per UHH location plus area-weighted aggregates '
              'for the Sacramento Valley, San Joaquin Valley, and all UHH locations '
              '(TR and WH excluded).'

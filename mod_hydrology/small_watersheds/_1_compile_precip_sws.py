@@ -3,7 +3,7 @@ Compile Monthly Area-Weighted Precipitation for Small Watersheds
 ================================================================
 Reads grid info and daily WGEN meteorology, computes area-weighted monthly
 precip (inches/month) per small watershed, and writes the result into a
-CVprecip .dat template for Product A (historical) or Product B (10 chunks).
+CVprecip .dat template for Product A (historical) or Product B configured chunks.
 
 Inputs
 ------
@@ -38,7 +38,7 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 
 class CompileSmallWatershedPrecip:
@@ -111,7 +111,7 @@ class CompileSmallWatershedPrecip:
                          engine="python",
                          usecols=[3])  # only precip column
         s = df.iloc[:, 0].reset_index(drop=True)
-        s.index = self.date_index[:len(s)]
+        s.index = pd.period_range(start="2025-01-01", periods=len(s), freq="D")
         return s
 
     def _aggregate_watershed_monthly(self, grid_subset: pd.DataFrame) -> pd.Series:
@@ -179,15 +179,15 @@ class CompileSmallWatershedPrecip:
         return monthly_df
 
     def write_product_b_chunks(self, df: pd.DataFrame, cvprecip_file: str, output_path: str) -> None:
-        """Split 1000-year monthly precip into 10 .dat files of 100 water years each.
+        """Split Product B monthly precip into configured full-chunk .dat files.
         Skips first 9 months (Jan-Sep of synthetic year 1) to align to Oct water year start.
-        Each chunk spans template WY1922-WY2021 (Oct 1921 - Sep 2021);
+        Each chunk uses the configured number of water years and starts at Oct 1921;
         WY1921 (rows 104-115) is preserved from the template as initialization.
-        Output files are named {base}_n01.dat ... {base}_n10.dat.
+        Output files are named {base}_n01.dat through the configured final chunk.
         """
-        months_per_chunk = 100 * 12  # 1200 months (WY1922-WY2021)
+        months_per_chunk = get_product_b_chunk_plan()["months_per_chunk"]
         skip_months = 9             # Jan-Sep of synthetic year 1
-        total_chunks = 10
+        total_chunks = get_product_b_chunk_plan()["chunk_count"]
         header_rows = 104
         init_months = 12            # WY1921 initialization preserved from template
         total_needed = skip_months + months_per_chunk * total_chunks
@@ -195,6 +195,15 @@ class CompileSmallWatershedPrecip:
             raise ValueError(f"Product B monthly series has {len(df)} months; need at least {total_needed}.")
         os.makedirs(output_path, exist_ok=True)
         cvprecip_dat_template = pd.read_csv(cvprecip_file, delimiter='\t', header=None)
+        required_rows = header_rows + init_months + months_per_chunk
+        if len(cvprecip_dat_template) < required_rows:
+            extra_rows = pd.DataFrame(
+                index=range(required_rows - len(cvprecip_dat_template)),
+                columns=cvprecip_dat_template.columns,
+            )
+            cvprecip_dat_template = pd.concat(
+                [cvprecip_dat_template, extra_rows], ignore_index=True
+            )
         print(f"  Template shape: {cvprecip_dat_template.shape}")
         aligned = df.iloc[skip_months:].reset_index(drop=True)
         base_name, ext = os.path.splitext(os.path.basename(cvprecip_file))
@@ -208,7 +217,7 @@ class CompileSmallWatershedPrecip:
             out_file = os.path.join(output_path, out_name)
             dat.iloc[:header_rows].to_csv(out_file, sep='\t', index=False, header=False, float_format='%.0f')
             dat.iloc[header_rows:header_rows + init_months + months_per_chunk].to_csv(out_file, sep='\t', index=False, header=False, float_format='%.3f', mode='a')
-            print(f"    Chunk {i+1:02d}/10: {os.path.basename(out_file)}")
+            print(f"    Chunk {i+1:02d}/{total_chunks}: {os.path.basename(out_file)}")
 
     def write_matrix(self,
                      df: pd.DataFrame,
@@ -242,7 +251,7 @@ def parse_args():
     p.add_argument("--output_path", default=None,
                    help="Output directory. Default resolved from config.")
     p.add_argument("--product", choices=['A', 'B'], required=True,
-                   help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).')
+                   help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).')
     return p.parse_args()
 
 

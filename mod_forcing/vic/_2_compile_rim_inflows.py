@@ -42,7 +42,7 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_module_generated_dir, get_periods
+from utils.paths import get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 
 class compile_rim_inflows:
@@ -131,7 +131,10 @@ class compile_rim_inflows:
                 raise FileNotFoundError(f"Flux file not found: {flux_path}")
         q_routed = q_routed / q_pct_area
         q_routed = q_routed * q_area * 1e12 * 8.10714e-13 / 1e3  # convert mm to taf
-        q_routed.index = self.dates
+        if self.product_b:
+            q_routed.index = pd.period_range(start="2025-01-01", periods=len(q_routed), freq="D")
+        else:
+            q_routed.index = self.dates
         # Resample daily to monthly totals
         print(f"  Resampling {len(q_routed)} daily values to monthly...")
         if isinstance(q_routed.index, pd.PeriodIndex):
@@ -143,25 +146,25 @@ class compile_rim_inflows:
         return q_routed_monthly
 
     def _write_product_b_chunks(self, monthly_series, output_base_path):
-        # Create 10 chunks of 100 full water years (Oct-Sep) each
-        # Water year convention: Oct 1921 - Sep 2021 (WY1922-WY2021)
+        # Create complete chunks using the configured Product B periods
+        # Water-year labels start at WY1922 and extend for the configured chunk.
         # Skip first 9 months (Jan-Sep of year 1) to align to October start
-        months_per_chunk = 100 * 12  # 1200 months = 100 water years
-        total_chunks = 10
+        months_per_chunk = get_product_b_chunk_plan()["months_per_chunk"]
+        total_chunks = get_product_b_chunk_plan()["chunk_count"]
         skip_months = 9  # Skip Jan-Sep of year 1 to start at October
         
-        total_needed = skip_months + (months_per_chunk * total_chunks)  # 9 + 12000 = 12009 months
+        total_needed = skip_months + (months_per_chunk * total_chunks)
         if len(monthly_series) < total_needed:
             raise ValueError(f"Product B monthly series has {len(monthly_series)} months; need at least {total_needed}.")
         
         # Skip first 9 months to align to October (water year start)
         aligned = monthly_series.iloc[skip_months:]
         
-        # Build date template for 100 water years: Oct 1921 - Sep 2021
-        # WY1922 = Oct 1921 - Sep 1922, ..., WY2021 = Oct 2020 - Sep 2021
+        # Build the configured chunk's water-year date template, starting
+        # with WY1922 (Oct 1921 - Sep 1922).
         years_list = []
         months_list = []
-        for wy in range(1922, 2022):  # Water years 1922-2021
+        for wy in range(1922, 1922 + get_product_b_chunk_plan()["calsim_chunk_years"]):
             # Oct-Dec of previous calendar year
             for m in [10, 11, 12]:
                 years_list.append(wy - 1)
@@ -171,8 +174,8 @@ class compile_rim_inflows:
                 years_list.append(wy)
                 months_list.append(m)
         
-        years_template = np.array(years_list)    # 1200 elements
-        months_template = np.array(months_list)  # 1200 elements
+        years_template = np.array(years_list)
+        months_template = np.array(months_list)
 
         print(f"  Writing {total_chunks} chunks of {months_per_chunk//12} water years each...")
         for i in range(total_chunks):
@@ -187,7 +190,7 @@ class compile_rim_inflows:
 
             out_file = f"{output_base_path}_qmo_n{i+1:02d}.csv"
             df.to_csv(out_file, header=False, index=False)
-            print(f"    Wrote chunk {i+1:02d}/10: {os.path.basename(out_file)}")
+            print(f"    Wrote chunk {i+1:02d}/{total_chunks}: {os.path.basename(out_file)}")
 
     def run(self, select_watershed=None):
         # Main method to run the compilation for selected watersheds
@@ -229,7 +232,7 @@ def main():
     parser.add_argument('--product', choices=['Historical', 'Historical_Unsplit', 'A', 'B'], required=True,
                         help='Product to generate: Historical (observed climate 1915-2021), '
                              'Historical_Unsplit (continuous WGEN historical sequence 1915-2018), '
-                             'A (WGEN historical 1915-2018), or B (stochastic 1000-yr chunks).')
+                             'A (WGEN historical 1915-2018), or B (configured stochastic chunks).')
     args = parser.parse_args()
 
     grid_info_path = args.grid_info_path or str(_script_dir / 'reference' / 'GridInfo')

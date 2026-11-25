@@ -26,7 +26,7 @@ Key outputs (in --outdir)
 
 Product B outputs (in DEFAULT_PROD_B_DIR)
 -----------------------------------------
-- <TERM>_productB_n01.csv through <TERM>_productB_n10.csv (10 chunks x 13 terms)
+- <TERM>_productB_n{01..N}.csv (configured chunk count x 13 terms)
 
 Dependencies
 ------------
@@ -55,7 +55,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_product_b_chunk_plan
 
 # DSS read window (matches CalSim historical period)
 DEFAULT_DSS_READ_START = "1921-10-31"
@@ -73,7 +73,7 @@ _base = get_base_dir()
 _gen  = get_module_generated_dir("mod_other/closure_terms")
 
 DEFAULT_DSS        = _base / "CalSim3" / "__calsim_sv_default__.dss"
-DEFAULT_RESAMPLED  = _base / "WGEN" / "resampled.dates_Product_B_1000yr.csv"
+DEFAULT_RESAMPLED  = _base / "WGEN" / f"resampled.dates_Product_B_{get_product_b_chunk_plan()['wgen_simulation_years']}yr.csv"
 DEFAULT_OUTDIR     = _gen / "output" /"_1_ct_calculation" /"wgen_analysis_outputs"
 DEFAULT_PROD_B_DIR = _gen / "output" / "_product_b_final"
 
@@ -322,29 +322,27 @@ def _write_product_b_chunks(
     term_cols: list[str],
 ) -> None:
     """
-    Split the weighted closure-term series into 10 x 100-water-year chunk CSVs,
-    following the standard Product B convention.
+    Split the weighted closure-term series into configured full water-year
+    chunks, following the standard Product B convention.
 
-    The input series must contain at least 12,009 months
-    (9 alignment months + 10 chunks x 1,200 months).  Typically this means the
-    WGEN synthetic calendar runs from stamp_year 1 through at least the first
-    9 months of stamp_year 1001 (i.e., stamp_year 1..1000 plus Jan-Sep of 1001).
+    The input series must contain at least 9 alignment months plus the configured
+    number of complete chunks. The WGEN synthetic calendar must include those
+    months before the splitter can write all requested chunks.
 
     Steps:
       1. Sort by (stamp_year, stamp_month) to get a contiguous series of at
          least 12,009 months.
       2. Skip the first 9 months (Jan-Sep of stamp_year 1) to align to an
          October (water-year) start.
-      3. Slice the remaining 12,000 months into 10 chunks of 1,200 months
-         (100 water years) each.
-      4. Re-label each chunk with the historical WY 1922-2021 template.
+      3. Slice the aligned series into complete configured chunks.
+      4. Re-label each chunk with the established WY1922 start template.
       5. Write one CSV per chunk in long format:
          Part B, Part C, Year, Month, Value
     """
-    months_per_chunk = 100 * 12   # 1200 months = 100 water years
-    total_chunks = 10
+    months_per_chunk = get_product_b_chunk_plan()["months_per_chunk"]
+    total_chunks = get_product_b_chunk_plan()["chunk_count"]
     skip_months = 9               # Jan-Sep of year 1 -> start at October
-    total_needed = skip_months + months_per_chunk * total_chunks  # 12009
+    total_needed = skip_months + months_per_chunk * total_chunks
 
     # Sort to ensure contiguous ordering
     wt = weighted.sort_values(["stamp_year", "stamp_month"]).reset_index(drop=True)
@@ -357,9 +355,9 @@ def _write_product_b_chunks(
     # Skip first 9 months to align to October (WY start)
     aligned = wt.iloc[skip_months:].reset_index(drop=True)
 
-    # Build the WY 1922-2021 date template (Year, Month) -- 1200 entries
+    # Build one configured chunk's WY date template (Year, Month).
     years_tpl, months_tpl = [], []
-    for wy in range(1922, 2022):
+    for wy in range(1922, 1922 + get_product_b_chunk_plan()["calsim_chunk_years"]):
         for m in (10, 11, 12):           # Oct-Dec of previous calendar year
             years_tpl.append(wy - 1)
             months_tpl.append(m)
@@ -395,7 +393,7 @@ def _write_product_b_chunks(
             fname = f"{short}_productB_n{i + 1:02d}.csv"
             df_out.to_csv(product_b_dir / fname, index=False)
 
-        print(f"  Wrote 10 chunks for {short}")
+        print(f"  Wrote {total_chunks} chunks for {short}")
 
     print(f"Product B chunks written to: {product_b_dir.resolve()}")
 
@@ -850,7 +848,7 @@ def main():
                     help="Output folder")
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--product", choices=['B'],
-                      help='Generate Product B stochastic chunk CSVs (one set of 10 chunks '
+                      help='Generate Product B stochastic chunk CSVs (one set of configured chunks '
                            'per closure term). Product A closure terms are auto-filled by '
                            'the final compiler from the CalSim baseline (Constant/Rept).')
     mode.add_argument("--diagnostics", action='store_true',

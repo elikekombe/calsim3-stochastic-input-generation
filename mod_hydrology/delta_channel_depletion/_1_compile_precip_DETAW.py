@@ -37,7 +37,7 @@ import pandas as pd
 
 # Add repo root to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 
 
 class CompileStationsPrecipMM:
@@ -135,7 +135,7 @@ class CompileStationsPrecipMM:
         if not series_list:
             raise ValueError(f"No precipitation series found for station {station_df.iloc[0]['Station']}.")
 
-        n_days = len(self.dates)
+        n_days = len(series_list[0])
         for s in series_list:
             if len(s) != n_days:
                 raise ValueError(f"Length mismatch for station {station_df.iloc[0]['Station']}: "
@@ -143,7 +143,10 @@ class CompileStationsPrecipMM:
 
         # Simple average across grids (still in mm)
         avg_mm = (sum(series_list) / len(series_list)).round(2)
-        avg_mm.index = self.dates
+        if self.product_b:
+            avg_mm.index = pd.period_range(start="2025-01-01", periods=n_days, freq="D")
+        else:
+            avg_mm.index = self.dates
         return avg_mm
 
     def _compute_station_df_allvars(self, station_df):
@@ -176,13 +179,17 @@ class CompileStationsPrecipMM:
         if not p_list:
             raise ValueError(f"No met series found for station {station_df.iloc[0]['Station']}.")
 
-        n_days = len(self.dates)
+        n_days = len(p_list[0])
         for s in p_list + tx_list + tn_list:
             if len(s) != n_days:
                 raise ValueError(f"Length mismatch for station {station_df.iloc[0]['Station']}: "
                                 f"expected {n_days}, got {len(s)}")
 
-        df = pd.DataFrame(index=self.dates)
+        if self.product_b:
+            daily_index = pd.period_range(start="2025-01-01", periods=n_days, freq="D")
+        else:
+            daily_index = self.dates
+        df = pd.DataFrame(index=daily_index)
         df['precip'] = (sum(p_list) / len(p_list)).values.round(2)
         df['tmax'] = (sum(tx_list) / len(tx_list)).values.round(2)
         df['tmin'] = (sum(tn_list) / len(tn_list)).values.round(2)
@@ -234,16 +241,18 @@ class CompileStationsPrecipMM:
         return df_out
 
     def _write_product_b_chunks(self, result_vals):
-        """Split 1000-year daily station precip into 10 CSV chunks of 100 water years each.
+        """Split Product B daily station precip into configured full-year CSV chunks.
         Skips first 273 days (Jan-Sep) to align to Oct water year start.
-        Each chunk spans template WY1922-WY2021 (Sep 30 1921 - Sep 2021).
+        Each chunk spans the configured water years, starting at the established 1921 date anchor.
         Sep 30 1921 values are copied from reference/mm_pcp4.csv.
-        Output files: {base}_n01{ext} ... {base}_n10{ext}
+        Output files: {base}_n01{ext} through the configured final chunk
         """
         skip_days = 273
-        date_template_oct = pd.date_range('1921-10-01', '2021-09-30', freq='D')
+        chunk_years = get_product_b_chunk_plan()["calsim_chunk_years"]
+        chunk_end = pd.Timestamp('1921-10-01') + pd.DateOffset(years=chunk_years) - pd.Timedelta(days=1)
+        date_template_oct = pd.date_range('1921-10-01', chunk_end, freq='D')
         days_per_chunk = len(date_template_oct)  # 36524
-        total_chunks = 10
+        total_chunks = get_product_b_chunk_plan()["chunk_count"]
         total_needed = skip_days + days_per_chunk * total_chunks
         for stn, vals in result_vals.items():
             if len(vals) < total_needed:
@@ -254,7 +263,7 @@ class CompileStationsPrecipMM:
         sep30_ref = ref_mm.iloc[0]
 
         # Full date template including Sep 30
-        date_template = pd.date_range('1921-09-30', '2021-09-30', freq='D')
+        date_template = pd.date_range(pd.Timestamp('1921-10-01') - pd.Timedelta(days=1), chunk_end, freq='D')
 
         out_dir = os.path.dirname(os.path.abspath(self.output_csv))
         base, ext = os.path.splitext(os.path.basename(self.output_csv))
@@ -273,15 +282,17 @@ class CompileStationsPrecipMM:
                 df_chunk[stn] = [float(sep30_ref[stn])] + list(chunk_data)
             out_file = os.path.join(out_dir, f"{base}_n{i+1:02d}{ext}")
             df_chunk.to_csv(out_file, index=False)
-            print(f"    Chunk {i+1:02d}/10: {os.path.basename(out_file)}")
+            print(f"    Chunk {i+1:02d}/{total_chunks}: {os.path.basename(out_file)}")
 
     def _write_product_b_lodi_chunks(self, df_vars, output_csv_lodi):
-        """Split 1000-year daily Lodi met into 10 CSV chunks of 100 water years each.
+        """Split Product B daily Lodi meteorology into configured full-year CSV chunks.
         Sep 30 1921 values are copied from reference/LODI_PT4.csv."""
         skip_days = 273
-        date_template_oct = pd.date_range('1921-10-01', '2021-09-30', freq='D')
+        chunk_years = get_product_b_chunk_plan()["calsim_chunk_years"]
+        chunk_end = pd.Timestamp('1921-10-01') + pd.DateOffset(years=chunk_years) - pd.Timedelta(days=1)
+        date_template_oct = pd.date_range('1921-10-01', chunk_end, freq='D')
         days_per_chunk = len(date_template_oct)
-        total_chunks = 10
+        total_chunks = get_product_b_chunk_plan()["chunk_count"]
         total_needed = skip_days + days_per_chunk * total_chunks
         precip_vals = df_vars['precip'].values
         tmax_vals   = df_vars['tmax'].values
@@ -294,7 +305,7 @@ class CompileStationsPrecipMM:
         sep30_lodi = ref_lodi.iloc[0]
 
         # Full date template including Sep 30
-        date_template = pd.date_range('1921-09-30', '2021-09-30', freq='D')
+        date_template = pd.date_range(pd.Timestamp('1921-10-01') - pd.Timedelta(days=1), chunk_end, freq='D')
 
         out_dir = os.path.dirname(os.path.abspath(output_csv_lodi))
         base, ext = os.path.splitext(os.path.basename(output_csv_lodi))
@@ -315,7 +326,7 @@ class CompileStationsPrecipMM:
             })
             out_file = os.path.join(out_dir, f"{base}_n{i+1:02d}{ext}")
             df_chunk.to_csv(out_file, index=False)
-            print(f"    Lodi chunk {i+1:02d}/10: {os.path.basename(out_file)}")
+            print(f"    Lodi chunk {i+1:02d}/{total_chunks}: {os.path.basename(out_file)}")
 
     def export_lodi_with_temps(self, output_csv_lodi):
         """
@@ -370,7 +381,7 @@ def main():
     ap.add_argument('--clip_period', nargs=2, default=None, help='Optional clip start end (YYYY-MM-DD) [Product A only]') 
     ap.add_argument('--lodi_output_csv', default=None, help='Optional path to write Lodi precip and temperature CSV') 
     ap.add_argument('--product', choices=['A', 'B'], required=True,
-                    help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).')
+                    help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).')
     args = ap.parse_args()
 
     script_dir = Path(__file__).resolve().parent

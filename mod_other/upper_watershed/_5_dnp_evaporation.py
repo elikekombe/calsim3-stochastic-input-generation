@@ -272,7 +272,7 @@ def _load_storage_chunks_b() -> list:
     Load all S_PEDRO_SV Product B chunk CSVs from _product_b_final/.
 
     Globs S_PEDRO_SV_product_b_n*.csv and returns a list of (label, df) pairs,
-    one per chunk (n01-n10). Each df has columns: date, storage_taf.
+    one per configured chunk. Each df has columns: date, storage_taf.
     """
     pattern = "S_PEDRO_SV_product_b_n*.csv"
     matches = sorted(CSV_B_DIR.glob(pattern))
@@ -326,7 +326,7 @@ def _load_er_b_chunks() -> dict:
     Load ER_PEDRO for each Product B chunk from the evaporation _product_b_final/ dir.
 
     Globs reservoir_evaporation_productB_n*.csv, filters Part B == 'ER_PEDRO'.
-    Returns dict {label: df} where label is 'n01'..'n10' and df has
+    Returns dict {label: df} where label is n01 through the configured final chunk and df has
     columns: date (month-start), er_inches.
     """
     search_dir = _EVAP_OUTROOT / "_product_b_final"

@@ -47,7 +47,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from utils.paths import get_base_dir, get_module_generated_dir, get_periods
+from utils.paths import get_base_dir, get_module_generated_dir, get_periods, get_product_b_chunk_plan
 from utils import dss_io
 from utils.validation_plots import Series, plot_ts_cdf
 
@@ -547,7 +547,7 @@ def main():
         description="Generate reservoir storage-level index curves for Product A and B."
     )
     ap.add_argument("--product", type=str, choices=["A", "B"], required=True,
-                    help='Product to generate: A (historical 1921-2018) or B (stochastic 1000-yr chunks).')
+                    help='Product to generate: A (historical 1921-2018) or B (configured stochastic chunks).')
     ap.add_argument("--yr-type-map", type=str, choices=["cy", "wy"], default=None,
                     help="Force all WYT series to map by Calendar Year (cy) or "
                          "Water Year (wy), ignoring per-series year_type_basis. "
@@ -684,7 +684,7 @@ def main():
             run_product_a_plots(df, dss_data)
 
         elif prod == "B":
-            for i in range(1, 11):
+            for i in range(1, get_product_b_chunk_plan()["chunk_count"] + 1):
                 ensemble = f"n{i:02d}"
                 print(f"\n  --- Ensemble {ensemble} ---")
                 wyt_dir = wyt_product_dir / _WYT_PRODUCT_DIRS["B"]

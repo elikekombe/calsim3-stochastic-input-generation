@@ -1,7 +1,7 @@
 """
 Generate Product B Day-Volume Fractions
 =======================================
-For each Product B chunk (10 x 100 water years), match every synthetic
+For each configured Product B chunk, match every synthetic
 water year to the nearest historical water year by annual flow index,
 then borrow the matched year's daily VOL-FRACTION pattern.
 
@@ -21,15 +21,15 @@ Inputs
 - Reference inflows:    reference/reference_inflows.csv
     Part B / Part C pairs defining the annual flow index components
 - Product B rim inflows: GENERATED/mod_hydrology/rim_inflow/output/_3_qmap_product_b/
-    <PartB>_qmo_n01.csv ... n10.csv (qmap_postAdj or qmap_preAdj)
+    <PartB>_qmo_n{01..N}.csv (qmap_postAdj or qmap_preAdj)
 
 Outputs
 -------
 - GENERATED/mod_other/day_volume_fractions/output/_product_b_final/
-    vol_fraction_productB_n01.csv ... n10.csv
+    vol_fraction_productB_n{01..N}.csv
         Columns: Part B, Part C, Year, Month, Value
 - GENERATED/mod_other/day_volume_fractions/output/_2_generate_product_b/
-    wy_matches_n01.csv ... n10.csv
+    wy_matches_n{01..N}.csv
         Columns: WY, matched_historical_WY, annual_flow_synthetic, annual_flow_historical
 
 Usage
@@ -49,7 +49,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from utils import dss_io
-from utils.paths import get_base_dir, get_module_generated_dir
+from utils.paths import get_base_dir, get_module_generated_dir, get_product_b_chunk_plan
 
 # Paths
 _GEN_DIR = get_module_generated_dir("mod_other/day_volume_fractions")
@@ -61,7 +61,7 @@ script_name = Path(__file__).stem
 DEFAULT_OUTDIR = _GEN_DIR / "output" / script_name
 PRODUCT_B_FINAL = _GEN_DIR / "output" /"_product_b_final"
 
-N_CHUNKS = 10
+N_CHUNKS = get_product_b_chunk_plan()["chunk_count"]
 MAX_WORKERS = max(1, (os.cpu_count() or 4) - 1)
 
 # Earliest water year allowed in the donor pool. Patterns before 1955 are
